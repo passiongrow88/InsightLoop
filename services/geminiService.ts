@@ -3,8 +3,19 @@ import { SYSTEM_INSTRUCTION } from '../constants';
 import { JournalEntry, ManifestationItem, Language } from '../types';
 
 // Initialize Gemini Client
-// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Browser (Vite) environment variables must start with VITE_
+const API_KEY =
+  (import.meta as any)?.env?.VITE_GEMINI_API_KEY ||
+  (import.meta as any)?.env?.VITE_GOOGLE_API_KEY ||
+  "";
+
+if (!API_KEY) {
+  throw new Error("Missing Gemini API key. Set VITE_GEMINI_API_KEY (or VITE_GOOGLE_API_KEY) in Vercel and redeploy.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+
 
 const MODEL_NAME = 'gemini-3-flash-preview';
 
