@@ -1,3 +1,6 @@
+console.log("ENV CHECK:", (import.meta as any)?.env);
+console.log("API_KEY LENGTH:", API_KEY?.length);
+
 import { GoogleGenAI } from "@google/genai";
 import { SYSTEM_INSTRUCTION } from '../constants';
 import { JournalEntry, ManifestationItem, Language } from '../types';
