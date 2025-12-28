@@ -2,10 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🔥 HOTFIX: Force primary button purple */
+/* ===== InsightLoop Main Button (Hard Override) ===== */
 button,
+a,
+[role="button"],
 .btn-primary,
 .primary-button {
-  background-color: #7c3aed !important; /* Tailwind purple-600 */
-  color: white !important;
+  background-color: transparent !important;
+  color: #111827 !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+button:hover,
+a:hover,
+[role="button"]:hover,
+.btn-primary:hover,
+.primary-button:hover {
+  background-color: #4c1d95 !important; /* deep purple */
+  color: #ffffff !important;
 }
