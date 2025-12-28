@@ -2,295 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===============================
-   InsightLoop Theme Tokens
-   =============================== */
-:root {
-  --il-purple-50:  #f5f3ff;
-  --il-purple-100: #ede9fe;
-  --il-purple-200: #ddd6fe;
-  --il-purple-300: #c4b5fd;
-  --il-purple-400: #a78bfa;
-  --il-purple-500: #8b5cf6;
-  --il-purple-600: #7c3aed; /* main */
-  --il-purple-700: #6d28d9;
-  --il-purple-800: #5b21b6;
-
-  --il-text: #111827;
-  --il-muted: #6b7280;
-
-  --il-border: rgba(17, 24, 39, 0.10);
-  --il-border-soft: rgba(17, 24, 39, 0.08);
-  --il-shadow: 0 10px 30px rgba(17, 24, 39, 0.10);
-  --il-card: rgba(255, 255, 255, 0.92);
+:root{
+  --brand-600:#7c3aed;
+  --brand-500:#8b5cf6;
+  --brand-400:#a78bfa;
+  --brand-100:rgba(124,58,237,.14);
+  --bg:#f8f7ff;
 }
 
-/* ===============================
-   ✅ RESET: Undo previous "Hard Override"
-   （关键：不要再全局改 button / a）
-   =============================== */
-button,
-a,
-[role="button"] {
-  background-color: initial;
-  color: inherit;
-  border-color: initial;
+html,body{background:var(--bg);}
+
+/* lucide 防黑块 */
+svg{fill:none;stroke:currentColor;}
+
+/* 轻柔 focus 紫光 */
+input:focus,textarea:focus,select:focus{
+  box-shadow:0 0 0 3px var(--brand-100);
+  outline:none;
 }
 
-/* 全局边框回归中性（不再紫） */
-* {
-  border-color: var(--il-border-soft);
-}
-
-/* Focus ring：给回“柔紫色”而不是全禁用 */
-:where(input, textarea, select, button, a, [role="button"]):focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.18);
-  border-color: rgba(124, 58, 237, 0.55);
-}
-
-/* ===============================
-   ✅ Link Accent (App 内常见紫色文字)
-   =============================== */
-a {
-  color: inherit;
-  text-decoration: none;
-}
-a:hover {
-  color: var(--il-purple-600);
-}
-
-/* ===============================
-   ✅ Primary Button (精准恢复紫色按钮)
-   - 不碰登录页：登录页通常按钮是 disabled/灰，你现在是正常的
-   - 只命中：.btn-primary / .primary-button / “开始”这种主 CTA 常用类
-   =============================== */
-.btn-primary,
-.primary-button,
-button.btn-primary,
-button.primary-button {
-  background: var(--il-purple-500) !important;
-  color: white !important;
-  border: 1px solid rgba(139, 92, 246, 0.45) !important;
-  box-shadow: 0 12px 25px rgba(124, 58, 237, 0.20);
-}
-
-.btn-primary:hover,
-.primary-button:hover,
-button.btn-primary:hover,
-button.primary-button:hover {
-  background: var(--il-purple-600) !important;
-  border-color: rgba(124, 58, 237, 0.65) !important;
-}
-
-/* 次按钮：透明底 + 紫边（参考模板那种轻盈感） */
-.btn-outline,
-.outline-button {
-  background: transparent !important;
-  color: var(--il-purple-700) !important;
-  border: 1px solid rgba(124, 58, 237, 0.35) !important;
-}
-.btn-outline:hover,
-.outline-button:hover {
-  background: rgba(124, 58, 237, 0.08) !important;
-  border-color: rgba(124, 58, 237, 0.55) !important;
-}
-
-/* ===============================
-   ✅ Cards / Panels (参考模板：柔白卡片 + 轻阴影)
-   =============================== */
-.card,
-.panel,
-.section {
-  background: var(--il-card);
-  border: 1px solid var(--il-border);
-  border-radius: 24px;
-  box-shadow: var(--il-shadow);
-}
-
-/* 输入框：柔边框 + 轻紫 focus */
-input,
-textarea,
-select {
-  border-color: var(--il-border-soft);
-}
-input:focus,
-textarea:focus,
-select:focus {
-  border-color: rgba(124, 58, 237, 0.55);
-}
-
-/* ===============================
-   ✅ Nav Active (顶部导航 pill 紫色选中)
-   说明：不改组件，只用“常见状态类”兜底
-   如果你的 active 是 aria-current / data-active 会直接命中
-   =============================== */
-a[aria-current="page"],
-button[aria-current="page"],
-[data-active="true"],
-.is-active {
-  background: rgba(124, 58, 237, 0.12) !important;
-  color: var(--il-purple-700) !important;
-  border: 1px solid rgba(124, 58, 237, 0.35) !important;
-  box-shadow: 0 10px 18px rgba(124, 58, 237, 0.18);
-}
-
-/* ===============================
-   ✅ Icons (恢复紫色语义：洞察/显化/日记)
-   不改组件的情况下，只做“安全兜底”：
-   - 洞察：紫
-   - 显化：偏紫粉/更亮
-   - 日记：中性灰（不抢主题）
-   你如果组件里有这些 class，会直接生效；没有也不会破坏现状
-   =============================== */
-.icon-journal,
-.module-journal .module-icon {
-  color: #64748b;
-}
-.icon-insight,
-.module-insight .module-icon {
-  color: var(--il-purple-600);
-}
-.icon-manifest,
-.module-manifest .module-icon {
-  color: var(--il-purple-500);
-}
-
-/* 关键：修复 svg 变黑块（你之前遇到的登录 icon 方块） */
-svg {
-  fill: none;
-  stroke: currentColor;
-}
-
-/* ===============================
-   ✅ Loader / “正在生成 InsightLoop 指引” 轻微发光
-   - 不改组件：只要你的 loading icon 外层带 .is-generating 或 .loading 会生效
-   - 你现在截图里那个圆形 icon 就会恢复紫感 + 微 glow
-   =============================== */
-.is-generating svg,
-.loading svg,
-.is-generating .module-icon,
-.loading .module-icon {
-  color: var(--il-purple-500);
-  filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.30));
-  opacity: 0.98;
-}
-
-@keyframes insightloopGlow {
-  0% { filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.18)); }
-  50% { filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.38)); }
-  100% { filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.18)); }
-}
-
-.is-generating svg,
-.loading svg {
-  animation: insightloopGlow 1.6s ease-in-out infinite;
-}
-
-/* 进度条紫色（你那条 loading bar） */
-progress::-webkit-progress-value {
-  background: var(--il-purple-500);
-}
-progress::-webkit-progress-bar {
-  background: rgba(17, 24, 39, 0.08);
-}
-
-/* ===============================
-   ✅ Reminder / Toast 不弹修复（最常见原因：z-index 被压住）
-   你不用管你用哪一个 toast lib：都给你抬到最上层
-   =============================== */
-.toast,
-.toaster,
-.sonner-toaster,
-[data-sonner-toaster],
-[role="status"],
-[role="alert"] {
-  position: fixed !important;
-  z-index: 99999 !important;
-}
-
-/* 有些 toast 会被 opacity/transform 影响显示 */
-.toast,
-.toaster,
-.sonner-toaster {
-  opacity: 1 !important;
-  transform: none !important;
-}
-
-/* ===============================
-   ✅ Cover / Background Fix
-   - 恢复首页/登录页的“封面背景”
-   - 防止被 card / panel / 全局背景覆盖
-   =============================== */
-
-/* 1) 如果你的封面是 body 背景图/渐变，确保不被重置 */
-html, body {
-  background-color: #f7f5ff; /* 轻紫底，接近模板 */
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
-}
-
-/* 2) 常见封面容器 class（不确定你项目实际叫什么，所以做安全兜底）
-   你只要命中其中一个，就会恢复显示 */
-.cover,
-.hero,
-.hero-bg,
-.app-bg,
-.page-bg,
-.background,
-.bg-cover,
-.bg-hero {
-  position: relative;
-  z-index: 0;
-}
-
-/* 3) 如果封面是用 ::before 画出来的（最常见：渐变光晕） */
-.cover::before,
-.hero::before,
-.hero-bg::before,
-.app-bg::before,
-.page-bg::before,
-.background::before,
-.bg-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  /* 柔紫光晕（接近你参考模板那种氛围） */
+/* 背景淡紫雾 */
+body::before{
+  content:"";
+  position:fixed;
+  inset:-20%;
+  pointer-events:none;
   background:
-    radial-gradient(900px 600px at 80% 20%, rgba(168, 85, 247, 0.18), transparent 60%),
-    radial-gradient(900px 600px at 20% 80%, rgba(99, 102, 241, 0.12), transparent 60%),
-    linear-gradient(180deg, rgba(245, 243, 255, 0.95), rgba(250, 250, 255, 0.98));
+    radial-gradient(circle at 20% 20%, rgba(124,58,237,0.10), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(217,70,239,0.08), transparent 45%);
+  filter:blur(12px);
+  z-index:0;
 }
+#root{position:relative;z-index:1;}
 
-/* 4) 防止卡片/容器把背景“盖成纯白” */
-#root, .app, .app-root {
-  background: transparent !important;
-}
+/* nav active 紫色兜底 */
+.bg-brand-500{background:var(--brand-500)!important;color:#fff!important;}
+.text-brand-600{color:var(--brand-600)!important;}
+.border-brand-100{border-color:rgba(124,58,237,.14)!important;}
 
-/* 5) 如果你的封面其实是一个 img，常见叫 cover-image / hero-image */
-.cover img,
-.hero img,
-.hero-bg img,
-.cover-image,
-.hero-image {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  opacity: 1 !important;
-  filter: none !important;
+/* generating icon 微光（你有 .is-generating 时才会亮） */
+@keyframes insightloopGlow{
+  0%{filter:drop-shadow(0 0 4px rgba(124,58,237,.20));opacity:.85;}
+  50%{filter:drop-shadow(0 0 9px rgba(124,58,237,.40));opacity:1;}
+  100%{filter:drop-shadow(0 0 4px rgba(124,58,237,.20));opacity:.85;}
 }
-
-/* 6) 万用：如果你之前有把某些背景元素设成透明，强制可见 */
-.cover,
-.hero,
-.hero-bg,
-.app-bg,
-.page-bg,
-.background,
-.bg-hero {
-  opacity: 1 !important;
-  filter: none !important;
-}
+.is-generating svg{animation:insightloopGlow 1.6s ease-in-out infinite;}
