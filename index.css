@@ -2,163 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== InsightLoop Main Button (Hard Override) ===== */
-button,
-a,
-[role="button"],
+/* ===============================
+   InsightLoop: Minimal UI Fix Pack
+   Goal:
+   1) Keep original UI (Login + Journal + Manifestation)
+   2) Only style PRIMARY button (not all buttons/links)
+   3) Keep icons normal (no black squares)
+   4) Add subtle glow ONLY when generating Insight guidance
+   =============================== */
+
+/* ✅ 0) 不要全局改 svg，否则会把某些 icon 变黑块
+   这里我们只保证 svg 默认不被强制填充 */
+svg {
+  fill: none;
+}
+
+/* ✅ 1) Primary button style (ONLY this class)
+   你要把“主按钮”加上 .btn-primary 或 .primary-button 才会生效
+*/
 .btn-primary,
 .primary-button {
   background-color: transparent !important;
   color: #111827 !important;
   border: 1px solid rgba(0, 0, 0, 0.15) !important;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
 }
 
-button:hover,
-a:hover,
-[role="button"]:hover,
 .btn-primary:hover,
 .primary-button:hover {
-  background-color: #4c1d95 !important; /* deep purple */
+  background-color: #4c1d95 !important;
   color: #ffffff !important;
+  border-color: #4c1d95 !important;
 }
 
-/* ===============================
-   InsightLoop UI Border Fix
-   =============================== */
-
-/* 1. 全局默认边框：恢复中性色（非紫） */
-* {
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-/* 2. 输入框 / 卡片 / 常见容器 */
-input,
-textarea,
-select,
-.card,
-.panel,
-.section,
-div {
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-/* 3. 禁止 Tailwind 默认紫色 ring */
-*:focus {
-  outline: none !important;
-  box-shadow: none !important;
-  ring: none !important;
-}
-
-/* 4. 只有 hover / focus 时，才允许“深紫色” */
-button:hover,
-.btn-primary:hover,
-.primary-button:hover {
-  border-color: #4c1d95; /* deep purple */
-}
-
-/* 5. 输入框 focus（如果你想要一点点紫色） */
+/* ✅ 2) Input focus: keep original UI, but avoid ugly purple border if it appears */
 input:focus,
-textarea:focus {
-  border-color: #4c1d95;
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: none;
 }
 
-/* ===============================
-   InsightLoop Icon Color Fix
-   =============================== */
-
-
-/* InsightLoop 引导 / 状态类图标（更温柔一点） */
-.insight-icon,
-.guide-icon,
-.status-icon {
-  color: #9ca3af; /* softer gray */
-}
-
-/* 如果你想让“加载 / 引导”符号微微带一点紫 */
-.insight-icon.accent {
-  color: #a78bfa; /* soft purple */
-}
-
-/* ===============================
-   InsightLoop Icon System (SAFE)
-   - Fix login icons
-   - Add semantic module colors
-   - Add subtle glow when generating
-   =============================== */
-
-/* ✅ 0) 先修复：不要全局改所有 svg，否则会把登录 icon 变黑块 */
-svg {
-  fill: none;
-  stroke: currentColor;
-}
-
-/* ✅ 1) 登录页输入框 icon：保持原本风格（不要被全局染色/填充影响）
-   - 命中常见 input icon 写法：input 左侧的 svg / i / span
+/* ✅ 3) Generating glow (ONLY when you add class: is-generating)
+   使用方式：生成中时外层加 className="is-generating"
 */
-input + svg,
-input ~ svg,
-.input-icon svg,
-.auth-icon svg,
-.login-icon svg {
-  fill: none !important;
-  stroke: currentColor !important;
-  opacity: 0.75;
-}
-
-/* 如果你的登录 icon 是图片/背景图容器，防止被颜色规则影响 */
-.input-icon,
-.auth-icon,
-.login-icon {
-  color: inherit !important;
-}
-
-/* ✅ 2) 语义色：只作用在模块容器内，不碰全局主题
-   你只需要给模块顶层容器加 class：
-   - 日记：.module-journal
-   - 洞察：.module-insight
-   - 显化：.module-manifest
-*/
-.module-journal .module-icon,
-.module-journal .module-icon svg {
-  color: #64748b; /* calm slate */
-  stroke: currentColor;
-}
-
-.module-insight .module-icon,
-.module-insight .module-icon svg {
-  color: #7c3aed; /* insight purple */
-  stroke: currentColor;
-}
-
-.module-manifest .module-icon,
-.module-manifest .module-icon svg {
-  color: #0f766e; /* manifestation teal */
-  stroke: currentColor;
-}
-
-/* ✅ 3) 生成 InsightLoop 指引时轻微发光（只在 loading 时）
-   你只需要在“生成中”的 icon 外层加 class：.is-generating
-*/
-.is-generating .module-icon,
-.is-generating .module-icon svg {
-  filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.35));
-  opacity: 0.95;
-}
-
-/* 可选：轻微呼吸动画（很克制，不会吵） */
 @keyframes insightloopGlow {
   0% {
-    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.20));
-    opacity: 0.85;
+    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.18));
+    opacity: 0.88;
   }
   50% {
-    filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.40));
+    filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.32));
     opacity: 1;
   }
   100% {
-    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.20));
-    opacity: 0.85;
+    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.18));
+    opacity: 0.88;
   }
 }
 
