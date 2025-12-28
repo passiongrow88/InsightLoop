@@ -216,3 +216,81 @@ progress::-webkit-progress-bar {
   opacity: 1 !important;
   transform: none !important;
 }
+
+/* ===============================
+   ✅ Cover / Background Fix
+   - 恢复首页/登录页的“封面背景”
+   - 防止被 card / panel / 全局背景覆盖
+   =============================== */
+
+/* 1) 如果你的封面是 body 背景图/渐变，确保不被重置 */
+html, body {
+  background-color: #f7f5ff; /* 轻紫底，接近模板 */
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
+/* 2) 常见封面容器 class（不确定你项目实际叫什么，所以做安全兜底）
+   你只要命中其中一个，就会恢复显示 */
+.cover,
+.hero,
+.hero-bg,
+.app-bg,
+.page-bg,
+.background,
+.bg-cover,
+.bg-hero {
+  position: relative;
+  z-index: 0;
+}
+
+/* 3) 如果封面是用 ::before 画出来的（最常见：渐变光晕） */
+.cover::before,
+.hero::before,
+.hero-bg::before,
+.app-bg::before,
+.page-bg::before,
+.background::before,
+.bg-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* 柔紫光晕（接近你参考模板那种氛围） */
+  background:
+    radial-gradient(900px 600px at 80% 20%, rgba(168, 85, 247, 0.18), transparent 60%),
+    radial-gradient(900px 600px at 20% 80%, rgba(99, 102, 241, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(245, 243, 255, 0.95), rgba(250, 250, 255, 0.98));
+}
+
+/* 4) 防止卡片/容器把背景“盖成纯白” */
+#root, .app, .app-root {
+  background: transparent !important;
+}
+
+/* 5) 如果你的封面其实是一个 img，常见叫 cover-image / hero-image */
+.cover img,
+.hero img,
+.hero-bg img,
+.cover-image,
+.hero-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* 6) 万用：如果你之前有把某些背景元素设成透明，强制可见 */
+.cover,
+.hero,
+.hero-bg,
+.app-bg,
+.page-bg,
+.background,
+.bg-hero {
+  opacity: 1 !important;
+  filter: none !important;
+}
