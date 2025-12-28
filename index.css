@@ -67,15 +67,6 @@ textarea:focus {
    InsightLoop Icon Color Fix
    =============================== */
 
-/* 通用 SVG / Icon 颜色恢复 */
-svg,
-.icon,
-.lucide,
-[data-icon] {
-  color: #6b7280; /* neutral gray */
-  fill: currentColor;
-  stroke: currentColor;
-}
 
 /* InsightLoop 引导 / 状态类图标（更温柔一点） */
 .insight-icon,
@@ -87,4 +78,91 @@ svg,
 /* 如果你想让“加载 / 引导”符号微微带一点紫 */
 .insight-icon.accent {
   color: #a78bfa; /* soft purple */
+}
+
+/* ===============================
+   InsightLoop Icon System (SAFE)
+   - Fix login icons
+   - Add semantic module colors
+   - Add subtle glow when generating
+   =============================== */
+
+/* ✅ 0) 先修复：不要全局改所有 svg，否则会把登录 icon 变黑块 */
+svg {
+  fill: none;
+  stroke: currentColor;
+}
+
+/* ✅ 1) 登录页输入框 icon：保持原本风格（不要被全局染色/填充影响）
+   - 命中常见 input icon 写法：input 左侧的 svg / i / span
+*/
+input + svg,
+input ~ svg,
+.input-icon svg,
+.auth-icon svg,
+.login-icon svg {
+  fill: none !important;
+  stroke: currentColor !important;
+  opacity: 0.75;
+}
+
+/* 如果你的登录 icon 是图片/背景图容器，防止被颜色规则影响 */
+.input-icon,
+.auth-icon,
+.login-icon {
+  color: inherit !important;
+}
+
+/* ✅ 2) 语义色：只作用在模块容器内，不碰全局主题
+   你只需要给模块顶层容器加 class：
+   - 日记：.module-journal
+   - 洞察：.module-insight
+   - 显化：.module-manifest
+*/
+.module-journal .module-icon,
+.module-journal .module-icon svg {
+  color: #64748b; /* calm slate */
+  stroke: currentColor;
+}
+
+.module-insight .module-icon,
+.module-insight .module-icon svg {
+  color: #7c3aed; /* insight purple */
+  stroke: currentColor;
+}
+
+.module-manifest .module-icon,
+.module-manifest .module-icon svg {
+  color: #0f766e; /* manifestation teal */
+  stroke: currentColor;
+}
+
+/* ✅ 3) 生成 InsightLoop 指引时轻微发光（只在 loading 时）
+   你只需要在“生成中”的 icon 外层加 class：.is-generating
+*/
+.is-generating .module-icon,
+.is-generating .module-icon svg {
+  filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.35));
+  opacity: 0.95;
+}
+
+/* 可选：轻微呼吸动画（很克制，不会吵） */
+@keyframes insightloopGlow {
+  0% {
+    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.20));
+    opacity: 0.85;
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.40));
+    opacity: 1;
+  }
+  100% {
+    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.20));
+    opacity: 0.85;
+  }
+}
+
+.is-generating .module-icon,
+.is-generating .module-icon svg {
+  animation: insightloopGlow 1.6s ease-in-out infinite;
 }
