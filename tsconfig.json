@@ -16,6 +16,18 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+
+  /* ✅ 只编译真正的前端源码 */
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+
+  /* ✅ 明确排除所有“配置 / 输出 / 声明文件” */
+  "exclude": [
+    "node_modules",
+    "dist",
+    "vite.config.ts",
+    "vite.config.*",
+    "**/*.d.ts"
+  ],
+
   "references": [{ "path": "./tsconfig.node.json" }]
 }
