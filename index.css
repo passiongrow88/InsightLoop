@@ -1,3 +1,11 @@
 ﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 🔥 HOTFIX: Force primary button purple */
+button,
+.btn-primary,
+.primary-button {
+  background-color: #7c3aed !important; /* Tailwind purple-600 */
+  color: white !important;
+}
