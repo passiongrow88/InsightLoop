@@ -62,3 +62,29 @@ input:focus,
 textarea:focus {
   border-color: #4c1d95;
 }
+
+/* ===============================
+   InsightLoop Icon Color Fix
+   =============================== */
+
+/* 通用 SVG / Icon 颜色恢复 */
+svg,
+.icon,
+.lucide,
+[data-icon] {
+  color: #6b7280; /* neutral gray */
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+/* InsightLoop 引导 / 状态类图标（更温柔一点） */
+.insight-icon,
+.guide-icon,
+.status-icon {
+  color: #9ca3af; /* softer gray */
+}
+
+/* 如果你想让“加载 / 引导”符号微微带一点紫 */
+.insight-icon.accent {
+  color: #a78bfa; /* soft purple */
+}
