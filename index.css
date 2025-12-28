@@ -3,50 +3,96 @@
 @tailwind utilities;
 
 /* ===============================
-   InsightLoop: Minimal UI Fix Pack
-   Goal:
-   1) Keep original UI (Login + Journal + Manifestation)
-   2) Only style PRIMARY button (not all buttons/links)
-   3) Keep icons normal (no black squares)
-   4) Add subtle glow ONLY when generating Insight guidance
+   InsightLoop Theme Tokens (Restore Purple)
+   - Restores primary purple across UI:
+     Logo / active nav / buttons / progress / loader
+   - Does NOT globally override all buttons/links
    =============================== */
 
-/* ✅ 0) 不要全局改 svg，否则会把某些 icon 变黑块
-   这里我们只保证 svg 默认不被强制填充 */
-svg {
-  fill: none;
+@layer base {
+  :root {
+    /* shadcn-style tokens (HSL values) */
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+
+    /* ✅ Primary = Purple */
+    --primary: 262 83% 58%; /* ~ #7c3aed */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 262 83% 96%; /* soft purple tint */
+    --accent-foreground: 262 83% 25%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 262 83% 58%;
+
+    --radius: 1rem;
+  }
+
+  /* 如果你有深色模式，保留（不会影响现在） */
+  .dark {
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 262 83% 65%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 262 83% 20%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 40%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 262 83% 65%;
+  }
+
+  /* ✅ 让 Tailwind 的 border / bg / text token 生效 */
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* ✅ 防止 icon 变黑块：不强行全局填充 */
+  svg {
+    fill: none;
+  }
 }
 
-/* ✅ 1) Primary button style (ONLY this class)
-   你要把“主按钮”加上 .btn-primary 或 .primary-button 才会生效
-*/
-.btn-primary,
-.primary-button {
-  background-color: transparent !important;
-  color: #111827 !important;
-  border: 1px solid rgba(0, 0, 0, 0.15) !important;
-  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
-}
-
-.btn-primary:hover,
-.primary-button:hover {
-  background-color: #4c1d95 !important;
-  color: #ffffff !important;
-  border-color: #4c1d95 !important;
-}
-
-/* ✅ 2) Input focus: keep original UI, but avoid ugly purple border if it appears */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  border-color: rgba(0, 0, 0, 0.15);
-  box-shadow: none;
-}
-
-/* ✅ 3) Generating glow (ONLY when you add class: is-generating)
-   使用方式：生成中时外层加 className="is-generating"
-*/
+/* ===============================
+   Only: Insight generating gentle glow
+   (你之前想要的：只让生成指引时发光)
+   =============================== */
 @keyframes insightloopGlow {
   0% {
     filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.18));
