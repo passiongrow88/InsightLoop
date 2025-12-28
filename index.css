@@ -22,3 +22,43 @@ a:hover,
   background-color: #4c1d95 !important; /* deep purple */
   color: #ffffff !important;
 }
+
+/* ===============================
+   InsightLoop UI Border Fix
+   =============================== */
+
+/* 1. 全局默认边框：恢复中性色（非紫） */
+* {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 2. 输入框 / 卡片 / 常见容器 */
+input,
+textarea,
+select,
+.card,
+.panel,
+.section,
+div {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 3. 禁止 Tailwind 默认紫色 ring */
+*:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  ring: none !important;
+}
+
+/* 4. 只有 hover / focus 时，才允许“深紫色” */
+button:hover,
+.btn-primary:hover,
+.primary-button:hover {
+  border-color: #4c1d95; /* deep purple */
+}
+
+/* 5. 输入框 focus（如果你想要一点点紫色） */
+input:focus,
+textarea:focus {
+  border-color: #4c1d95;
+}
