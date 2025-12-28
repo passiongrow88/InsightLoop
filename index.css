@@ -2,113 +2,192 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===============================
-   InsightLoop Theme Tokens (Restore Purple)
-   - Restores primary purple across UI:
-     Logo / active nav / buttons / progress / loader
-   - Does NOT globally override all buttons/links
-   =============================== */
+/* =========================================================
+   InsightLoop Theme (CSS-ONLY Restore)
+   - Restore purple primary button / pills
+   - Keep neutral borders (no global border overwrite)
+   - Fix icons (no more black blocks)
+   - Subtle glow for "generating InsightLoop guidance"
+   ========================================================= */
 
-@layer base {
-  :root {
-    /* shadcn-style tokens (HSL values) */
-    --background: 0 0% 100%;
-    --foreground: 222.2 47.4% 11.2%;
+:root {
+  --il-bg: #f7f5ff;
+  --il-card: rgba(255, 255, 255, 0.72);
+  --il-border: rgba(17, 24, 39, 0.10);
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
+  --il-text: #111827;
+  --il-muted: rgba(17, 24, 39, 0.55);
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
+  --il-purple-400: #a78bfa;
+  --il-purple-500: #8b5cf6;
+  --il-purple-600: #7c3aed;
+  --il-purple-700: #6d28d9;
 
-    /* ✅ Primary = Purple */
-    --primary: 262 83% 58%; /* ~ #7c3aed */
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 262 83% 96%; /* soft purple tint */
-    --accent-foreground: 262 83% 25%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 58%;
-
-    --radius: 1rem;
-  }
-
-  /* 如果你有深色模式，保留（不会影响现在） */
-  .dark {
-    --background: 222.2 47.4% 11.2%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 47.4% 11.2%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 47.4% 11.2%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 262 83% 65%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 262 83% 20%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 40%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 262 83% 65%;
-  }
-
-  /* ✅ 让 Tailwind 的 border / bg / text token 生效 */
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-
-  /* ✅ 防止 icon 变黑块：不强行全局填充 */
-  svg {
-    fill: none;
-  }
+  --il-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
 }
 
-/* ===============================
-   Only: Insight generating gentle glow
-   (你之前想要的：只让生成指引时发光)
-   =============================== */
+/* ===== Base background (match your original soft purple wash) ===== */
+html, body {
+  height: 100%;
+  color: var(--il-text);
+  background:
+    radial-gradient(1200px 700px at 70% 10%, rgba(167, 139, 250, 0.18), transparent 55%),
+    radial-gradient(900px 600px at 20% 20%, rgba(139, 92, 246, 0.10), transparent 60%),
+    linear-gradient(180deg, #fbfaff 0%, var(--il-bg) 100%);
+}
+
+/* ===== Cards / panels (no global div border override!) ===== */
+.card, .panel, .section, .il-card {
+  background: var(--il-card);
+  border: 1px solid var(--il-border);
+  border-radius: 24px;
+  box-shadow: var(--il-shadow);
+  backdrop-filter: blur(10px);
+}
+
+/* ===== Inputs: neutral border + purple focus ===== */
+input, textarea, select {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.65);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.70);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+/* ===== IMPORTANT: Do NOT globally style all buttons =====
+   Your previous CSS did: button,a,[role=button] { background: transparent !important; }
+   That killed ALL purple UI. We only style "primary" targets safely.
+*/
+
+/* ✅ Primary Button (Login “开始”, key CTA) */
+button.btn-primary,
+button.primary-button,
+.primary-button,
+.btn-primary,
+button[type="submit"] {
+  background: var(--il-purple-500);
+  color: #fff;
+  border: 1px solid rgba(139, 92, 246, 0.40);
+  border-radius: 9999px;
+  box-shadow: 0 14px 30px rgba(139, 92, 246, 0.18);
+  transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+button.btn-primary:hover,
+button.primary-button:hover,
+.primary-button:hover,
+.btn-primary:hover,
+button[type="submit"]:hover {
+  background: var(--il-purple-600);
+  box-shadow: 0 18px 34px rgba(124, 58, 237, 0.22);
+  transform: translateY(-1px);
+}
+
+button.btn-primary:active,
+button.primary-button:active,
+.primary-button:active,
+.btn-primary:active,
+button[type="submit"]:active {
+  transform: translateY(0px);
+}
+
+button:disabled,
+button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ✅ Ghost / Secondary Button (透明底、黑字、hover 变深紫白字)
+   如果你原本 UI 里有这种按钮，用 class 命中即可：
+   - .btn-ghost / .btn-secondary / .ghost-button
+*/
+.btn-ghost,
+.btn-secondary,
+.ghost-button {
+  background: transparent;
+  color: var(--il-text);
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  border-radius: 9999px;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.btn-ghost:hover,
+.btn-secondary:hover,
+.ghost-button:hover {
+  background: var(--il-purple-700);
+  color: #fff;
+  border-color: rgba(109, 40, 217, 0.55);
+}
+
+/* ===== Tabs / pill highlight (导航紫色 pill 的“回归”) ===== */
+.is-active,
+.active-pill,
+.tab-active,
+.nav-active {
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: var(--il-purple-700);
+  border-radius: 9999px;
+}
+
+/* ===== Icon Fix: stop black blocks =====
+   你之前的 svg 全局 fill/stroke 改坏了 icon.
+   这里用“安全规则”：让 lucide/线框 icon 跟随 currentColor
+*/
+svg {
+  fill: none;
+  stroke: currentColor;
+}
+
+/* 如果你用的是 lucide-react，它会带 .lucide class */
+.lucide {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+/* ===== Semantic icon colors (CSS-only, 不改组件也尽量命中) =====
+   - 日记：偏紫
+   - 洞察：更亮紫
+   - 显化：偏青绿
+   说明：如果你的模块容器有关键字 class/id（journal/insight/manifest），下面会自动生效。
+*/
+[id*="journal"], [class*="journal"] { --module-accent: var(--il-purple-600); }
+[id*="insight"], [class*="insight"] { --module-accent: var(--il-purple-500); }
+[id*="manifest"], [class*="manifest"] { --module-accent: #0f766e; }
+
+[id*="journal"] .module-icon, [class*="journal"] .module-icon,
+[id*="insight"] .module-icon, [class*="insight"] .module-icon,
+[id*="manifest"] .module-icon, [class*="manifest"] .module-icon {
+  color: var(--module-accent);
+}
+
+/* ===== “正在生成 InsightLoop 指引” icon 微光（只对 generating 状态生效） ===== */
 @keyframes insightloopGlow {
-  0% {
-    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.18));
-    opacity: 0.88;
-  }
-  50% {
-    filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.32));
-    opacity: 1;
-  }
-  100% {
-    filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.18));
-    opacity: 0.88;
-  }
+  0%   { filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.18)); opacity: 0.88; }
+  50%  { filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.35)); opacity: 1; }
+  100% { filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.18)); opacity: 0.88; }
 }
 
+/* 你项目里如果已有 loading class（is-generating / loading / generating），会自动命中 */
 .is-generating .module-icon,
-.is-generating .module-icon svg {
+.generating .module-icon,
+.loading .module-icon {
   animation: insightloopGlow 1.6s ease-in-out infinite;
+}
+
+/* 生成时的进度条/强调线：恢复紫色 */
+.progress,
+.progress-bar,
+.loading-bar,
+hr.accent,
+.divider-accent {
+  background: rgba(139, 92, 246, 0.65);
+  border-color: rgba(139, 92, 246, 0.35);
 }
