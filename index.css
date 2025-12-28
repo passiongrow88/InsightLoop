@@ -2,192 +2,217 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================================================
-   InsightLoop Theme (CSS-ONLY Restore)
-   - Restore purple primary button / pills
-   - Keep neutral borders (no global border overwrite)
-   - Fix icons (no more black blocks)
-   - Subtle glow for "generating InsightLoop guidance"
-   ========================================================= */
-
+/* ===============================
+   InsightLoop Theme Tokens
+   =============================== */
 :root {
-  --il-bg: #f7f5ff;
-  --il-card: rgba(255, 255, 255, 0.72);
-  --il-border: rgba(17, 24, 39, 0.10);
-
-  --il-text: #111827;
-  --il-muted: rgba(17, 24, 39, 0.55);
-
+  --il-purple-50:  #f5f3ff;
+  --il-purple-100: #ede9fe;
+  --il-purple-200: #ddd6fe;
+  --il-purple-300: #c4b5fd;
   --il-purple-400: #a78bfa;
   --il-purple-500: #8b5cf6;
-  --il-purple-600: #7c3aed;
+  --il-purple-600: #7c3aed; /* main */
   --il-purple-700: #6d28d9;
+  --il-purple-800: #5b21b6;
 
-  --il-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
+  --il-text: #111827;
+  --il-muted: #6b7280;
+
+  --il-border: rgba(17, 24, 39, 0.10);
+  --il-border-soft: rgba(17, 24, 39, 0.08);
+  --il-shadow: 0 10px 30px rgba(17, 24, 39, 0.10);
+  --il-card: rgba(255, 255, 255, 0.92);
 }
 
-/* ===== Base background (match your original soft purple wash) ===== */
-html, body {
-  height: 100%;
-  color: var(--il-text);
-  background:
-    radial-gradient(1200px 700px at 70% 10%, rgba(167, 139, 250, 0.18), transparent 55%),
-    radial-gradient(900px 600px at 20% 20%, rgba(139, 92, 246, 0.10), transparent 60%),
-    linear-gradient(180deg, #fbfaff 0%, var(--il-bg) 100%);
+/* ===============================
+   ✅ RESET: Undo previous "Hard Override"
+   （关键：不要再全局改 button / a）
+   =============================== */
+button,
+a,
+[role="button"] {
+  background-color: initial;
+  color: inherit;
+  border-color: initial;
 }
 
-/* ===== Cards / panels (no global div border override!) ===== */
-.card, .panel, .section, .il-card {
+/* 全局边框回归中性（不再紫） */
+* {
+  border-color: var(--il-border-soft);
+}
+
+/* Focus ring：给回“柔紫色”而不是全禁用 */
+:where(input, textarea, select, button, a, [role="button"]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.18);
+  border-color: rgba(124, 58, 237, 0.55);
+}
+
+/* ===============================
+   ✅ Link Accent (App 内常见紫色文字)
+   =============================== */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+a:hover {
+  color: var(--il-purple-600);
+}
+
+/* ===============================
+   ✅ Primary Button (精准恢复紫色按钮)
+   - 不碰登录页：登录页通常按钮是 disabled/灰，你现在是正常的
+   - 只命中：.btn-primary / .primary-button / “开始”这种主 CTA 常用类
+   =============================== */
+.btn-primary,
+.primary-button,
+button.btn-primary,
+button.primary-button {
+  background: var(--il-purple-500) !important;
+  color: white !important;
+  border: 1px solid rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 12px 25px rgba(124, 58, 237, 0.20);
+}
+
+.btn-primary:hover,
+.primary-button:hover,
+button.btn-primary:hover,
+button.primary-button:hover {
+  background: var(--il-purple-600) !important;
+  border-color: rgba(124, 58, 237, 0.65) !important;
+}
+
+/* 次按钮：透明底 + 紫边（参考模板那种轻盈感） */
+.btn-outline,
+.outline-button {
+  background: transparent !important;
+  color: var(--il-purple-700) !important;
+  border: 1px solid rgba(124, 58, 237, 0.35) !important;
+}
+.btn-outline:hover,
+.outline-button:hover {
+  background: rgba(124, 58, 237, 0.08) !important;
+  border-color: rgba(124, 58, 237, 0.55) !important;
+}
+
+/* ===============================
+   ✅ Cards / Panels (参考模板：柔白卡片 + 轻阴影)
+   =============================== */
+.card,
+.panel,
+.section {
   background: var(--il-card);
   border: 1px solid var(--il-border);
   border-radius: 24px;
   box-shadow: var(--il-shadow);
-  backdrop-filter: blur(10px);
 }
 
-/* ===== Inputs: neutral border + purple focus ===== */
-input, textarea, select {
-  border: 1px solid rgba(17, 24, 39, 0.10);
-  border-radius: 16px;
-  background: rgba(255,255,255,0.65);
+/* 输入框：柔边框 + 轻紫 focus */
+input,
+textarea,
+select {
+  border-color: var(--il-border-soft);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(124, 58, 237, 0.55);
 }
 
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: rgba(139, 92, 246, 0.70);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+/* ===============================
+   ✅ Nav Active (顶部导航 pill 紫色选中)
+   说明：不改组件，只用“常见状态类”兜底
+   如果你的 active 是 aria-current / data-active 会直接命中
+   =============================== */
+a[aria-current="page"],
+button[aria-current="page"],
+[data-active="true"],
+.is-active {
+  background: rgba(124, 58, 237, 0.12) !important;
+  color: var(--il-purple-700) !important;
+  border: 1px solid rgba(124, 58, 237, 0.35) !important;
+  box-shadow: 0 10px 18px rgba(124, 58, 237, 0.18);
 }
 
-/* ===== IMPORTANT: Do NOT globally style all buttons =====
-   Your previous CSS did: button,a,[role=button] { background: transparent !important; }
-   That killed ALL purple UI. We only style "primary" targets safely.
-*/
-
-/* ✅ Primary Button (Login “开始”, key CTA) */
-button.btn-primary,
-button.primary-button,
-.primary-button,
-.btn-primary,
-button[type="submit"] {
-  background: var(--il-purple-500);
-  color: #fff;
-  border: 1px solid rgba(139, 92, 246, 0.40);
-  border-radius: 9999px;
-  box-shadow: 0 14px 30px rgba(139, 92, 246, 0.18);
-  transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+/* ===============================
+   ✅ Icons (恢复紫色语义：洞察/显化/日记)
+   不改组件的情况下，只做“安全兜底”：
+   - 洞察：紫
+   - 显化：偏紫粉/更亮
+   - 日记：中性灰（不抢主题）
+   你如果组件里有这些 class，会直接生效；没有也不会破坏现状
+   =============================== */
+.icon-journal,
+.module-journal .module-icon {
+  color: #64748b;
+}
+.icon-insight,
+.module-insight .module-icon {
+  color: var(--il-purple-600);
+}
+.icon-manifest,
+.module-manifest .module-icon {
+  color: var(--il-purple-500);
 }
 
-button.btn-primary:hover,
-button.primary-button:hover,
-.primary-button:hover,
-.btn-primary:hover,
-button[type="submit"]:hover {
-  background: var(--il-purple-600);
-  box-shadow: 0 18px 34px rgba(124, 58, 237, 0.22);
-  transform: translateY(-1px);
-}
-
-button.btn-primary:active,
-button.primary-button:active,
-.primary-button:active,
-.btn-primary:active,
-button[type="submit"]:active {
-  transform: translateY(0px);
-}
-
-button:disabled,
-button[disabled] {
-  opacity: 0.55;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-/* ✅ Ghost / Secondary Button (透明底、黑字、hover 变深紫白字)
-   如果你原本 UI 里有这种按钮，用 class 命中即可：
-   - .btn-ghost / .btn-secondary / .ghost-button
-*/
-.btn-ghost,
-.btn-secondary,
-.ghost-button {
-  background: transparent;
-  color: var(--il-text);
-  border: 1px solid rgba(17, 24, 39, 0.14);
-  border-radius: 9999px;
-  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
-}
-
-.btn-ghost:hover,
-.btn-secondary:hover,
-.ghost-button:hover {
-  background: var(--il-purple-700);
-  color: #fff;
-  border-color: rgba(109, 40, 217, 0.55);
-}
-
-/* ===== Tabs / pill highlight (导航紫色 pill 的“回归”) ===== */
-.is-active,
-.active-pill,
-.tab-active,
-.nav-active {
-  background: rgba(139, 92, 246, 0.16);
-  border: 1px solid rgba(139, 92, 246, 0.35);
-  color: var(--il-purple-700);
-  border-radius: 9999px;
-}
-
-/* ===== Icon Fix: stop black blocks =====
-   你之前的 svg 全局 fill/stroke 改坏了 icon.
-   这里用“安全规则”：让 lucide/线框 icon 跟随 currentColor
-*/
+/* 关键：修复 svg 变黑块（你之前遇到的登录 icon 方块） */
 svg {
   fill: none;
   stroke: currentColor;
 }
 
-/* 如果你用的是 lucide-react，它会带 .lucide class */
-.lucide {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-}
-
-/* ===== Semantic icon colors (CSS-only, 不改组件也尽量命中) =====
-   - 日记：偏紫
-   - 洞察：更亮紫
-   - 显化：偏青绿
-   说明：如果你的模块容器有关键字 class/id（journal/insight/manifest），下面会自动生效。
-*/
-[id*="journal"], [class*="journal"] { --module-accent: var(--il-purple-600); }
-[id*="insight"], [class*="insight"] { --module-accent: var(--il-purple-500); }
-[id*="manifest"], [class*="manifest"] { --module-accent: #0f766e; }
-
-[id*="journal"] .module-icon, [class*="journal"] .module-icon,
-[id*="insight"] .module-icon, [class*="insight"] .module-icon,
-[id*="manifest"] .module-icon, [class*="manifest"] .module-icon {
-  color: var(--module-accent);
-}
-
-/* ===== “正在生成 InsightLoop 指引” icon 微光（只对 generating 状态生效） ===== */
-@keyframes insightloopGlow {
-  0%   { filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.18)); opacity: 0.88; }
-  50%  { filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.35)); opacity: 1; }
-  100% { filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.18)); opacity: 0.88; }
-}
-
-/* 你项目里如果已有 loading class（is-generating / loading / generating），会自动命中 */
+/* ===============================
+   ✅ Loader / “正在生成 InsightLoop 指引” 轻微发光
+   - 不改组件：只要你的 loading icon 外层带 .is-generating 或 .loading 会生效
+   - 你现在截图里那个圆形 icon 就会恢复紫感 + 微 glow
+   =============================== */
+.is-generating svg,
+.loading svg,
 .is-generating .module-icon,
-.generating .module-icon,
 .loading .module-icon {
+  color: var(--il-purple-500);
+  filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.30));
+  opacity: 0.98;
+}
+
+@keyframes insightloopGlow {
+  0% { filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.18)); }
+  50% { filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.38)); }
+  100% { filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.18)); }
+}
+
+.is-generating svg,
+.loading svg {
   animation: insightloopGlow 1.6s ease-in-out infinite;
 }
 
-/* 生成时的进度条/强调线：恢复紫色 */
-.progress,
-.progress-bar,
-.loading-bar,
-hr.accent,
-.divider-accent {
-  background: rgba(139, 92, 246, 0.65);
-  border-color: rgba(139, 92, 246, 0.35);
+/* 进度条紫色（你那条 loading bar） */
+progress::-webkit-progress-value {
+  background: var(--il-purple-500);
+}
+progress::-webkit-progress-bar {
+  background: rgba(17, 24, 39, 0.08);
+}
+
+/* ===============================
+   ✅ Reminder / Toast 不弹修复（最常见原因：z-index 被压住）
+   你不用管你用哪一个 toast lib：都给你抬到最上层
+   =============================== */
+.toast,
+.toaster,
+.sonner-toaster,
+[data-sonner-toaster],
+[role="status"],
+[role="alert"] {
+  position: fixed !important;
+  z-index: 99999 !important;
+}
+
+/* 有些 toast 会被 opacity/transform 影响显示 */
+.toast,
+.toaster,
+.sonner-toaster {
+  opacity: 1 !important;
+  transform: none !important;
 }
