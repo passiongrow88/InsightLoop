@@ -1,9 +1,26 @@
 import { SYSTEM_INSTRUCTION } from "../constants";
 import { JournalEntry, ManifestationItem, Language } from "../types";
 
+/**
+ * ✅ Vercel Serverless API endpoint
+ * DO NOT change this path
+ */
 const API_ENDPOINT = "/api/gemini";
-const MODEL_NAME = "gemini-3-flash-preview";
 
+/**
+ * ✅ v1beta confirmed supported model
+ * (must align with backend /api/gemini.ts)
+ */
+const MODEL_NAME = "gemini-1.0-pro";
+
+/**
+ * ================================
+ * Low-level Gemini API Caller
+ * ================================
+ * - Keeps payload structure stable
+ * - Does NOT parse / alter AI output
+ * - Any structure enforcement stays in SYSTEM_INSTRUCTION
+ */
 async function callGeminiAPI(payload: {
   model?: string;
   prompt: string;
@@ -21,12 +38,30 @@ async function callGeminiAPI(payload: {
     throw new Error(`API ${res.status}: ${text}`);
   }
 
-  const data = (await res.json()) as { text?: string; error?: string; detail?: string };
-  if (data.error) throw new Error(`${data.error}${data.detail ? `: ${data.detail}` : ""}`);
+  const data = (await res.json()) as {
+    text?: string;
+    error?: string;
+    detail?: string;
+  };
+
+  if (data.error) {
+    throw new Error(
+      `${data.error}${data.detail ? `: ${JSON.stringify(data.detail)}` : ""}`
+    );
+  }
 
   return data.text || "";
 }
 
+/**
+ * ================================
+ * Journal Insight Generator
+ * ================================
+ * ⚠️ IMPORTANT:
+ * - DOES NOT change InsightLoop structure
+ * - DOES NOT inject extra formatting
+ * - ALL structure enforcement is handled by SYSTEM_INSTRUCTION
+ */
 export const generateJournalInsight = async (
   currentEntry: JournalEntry,
   history: JournalEntry[],
@@ -46,11 +81,12 @@ Dreams/Signs: ${h.angelNumbers || ""} ${h.dreams || ""}
       )
       .join("\n---\n");
 
-    const uiContext = language === "zh" ? "UI Language: Chinese" : "UI Language: English";
+    const uiContext =
+      language === "zh" ? "UI Language: Chinese" : "UI Language: English";
 
     const prompt = `
 CONTEXT (User History):
-${historyContext}
+${historyContext || "No prior records."}
 
 CURRENT ENTRY (Today):
 Date: ${currentEntry.date}
@@ -78,20 +114,32 @@ INSTRUCTIONS:
       temperature: 0.7,
     });
 
-    return text || "I apologize, I could not generate an insight at this moment. Please try again.";
+    return (
+      text ||
+      "I apologize, I could not generate an insight at this moment. Please try again."
+    );
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "InsightLoop is currently unavailable. Please check server/API settings and try again.";
   }
 };
 
+/**
+ * ================================
+ * Manifestation Guidance Generator
+ * ================================
+ * - Keeps tone gentle
+ * - No success/failure narratives injected here
+ * - System rules still live in SYSTEM_INSTRUCTION
+ */
 export const generateManifestationGuidance = async (
   goal: ManifestationItem,
   journalHistory: JournalEntry[],
   language: Language
 ): Promise<string> => {
   try {
-    const uiContext = language === "zh" ? "UI Language: Chinese" : "UI Language: English";
+    const uiContext =
+      language === "zh" ? "UI Language: Chinese" : "UI Language: English";
 
     const prompt = `
 The user has set a new Manifestation Goal.
@@ -105,7 +153,14 @@ Instructions:
 3. Do not judge the goal. Focus on the mindset and the journey.
 
 Recent History Context:
-${journalHistory.slice(0, 3).map((h) => `- ${h.event}: ${h.reflection}`).join("\n")}
+${
+  journalHistory.length > 0
+    ? journalHistory
+        .slice(0, 3)
+        .map((h) => `- ${h.event}: ${h.reflection}`)
+        .join("\n")
+    : "No recent history available."
+}
 `;
 
     const text = await callGeminiAPI({
