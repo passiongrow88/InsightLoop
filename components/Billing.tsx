@@ -421,6 +421,18 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
         ? import.meta.env.VITE_STRIPE_PRICE_YEARLY
         : import.meta.env.VITE_STRIPE_PRICE_MONTHLY;
 
+      // 🆕 添加调试日志
+      console.log('💳 Payment details:', {
+        plan: selectedPlan,
+        priceId,
+        userId: user.id,
+        email: user.email,
+        envCheck: {
+          hasYearlyPrice: !!import.meta.env.VITE_STRIPE_PRICE_YEARLY,
+          hasMonthlyPrice: !!import.meta.env.VITE_STRIPE_PRICE_MONTHLY,
+        }
+      });
+
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -431,22 +443,35 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
         }),
       });
 
+      // 🆕 改进错误处理
+      const text = await response.text();
+      console.log('📡 API Response:', response.status, text);
+
       if (!response.ok) {
-        throw new Error('Failed to create checkout session');
+        console.error('❌ Checkout failed:', text);
+        throw new Error(text || 'Failed to create checkout session');
       }
 
-      const { url } = await response.json();
-      window.location.href = url;
+      const data = JSON.parse(text);
+      
+      if (!data.url) {
+        throw new Error('No checkout URL returned');
+      }
+
+      console.log('✅ Redirecting to:', data.url);
+      window.location.href = data.url;
     } catch (err: any) {
-      console.error('Payment error:', err);
-      alert(
-        language === 'zh'
-          ? `支付失败: ${err.message}\n\n请稍后重试或联系支持。`
-          : `Payment failed: ${err.message}\n\nPlease try again or contact support.`
-      );
+      console.error('💥 Payment error:', err);
+      
       // 移除加载状态
       const loadingDiv = document.querySelector('.fixed.inset-0');
       if (loadingDiv) loadingDiv.remove();
+      
+      alert(
+        language === 'zh'
+          ? `支付失败: ${err.message}\n\n请检查浏览器控制台查看详细错误。`
+          : `Payment failed: ${err.message}\n\nCheck browser console for details.`
+      );
     }
   };
 
