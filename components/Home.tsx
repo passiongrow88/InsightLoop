@@ -15,10 +15,10 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
   const [reminderTime, setReminderTime] = useState(currentUser.reminderTime || '');
   const [isSettingReminder, setIsSettingReminder] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<string>('');
-  
+
   // State for In-App Alarm (visual fallback)
   const [isAlarmActive, setIsAlarmActive] = useState(false);
-  
+
   // Track the last minute we sent a notification to avoid duplicates in the same minute
   const lastNotificationMinute = useRef<string | null>(null);
 
@@ -36,9 +36,9 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
     if ("Notification" in window) {
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
-         new Notification(t.title, {
-            body: `${t.reminder_desc} (Test)`
-          });
+        new Notification(t.title, {
+          body: `${t.reminder_desc} (Test)`
+        });
       }
     }
   };
@@ -64,73 +64,73 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
       const userTimeFormatted = `${userH.padStart(2, '0')}:${userM.padStart(2, '0')}`;
 
       if (currentMinuteStr === userTimeFormatted) {
-         // Only trigger if we haven't triggered for this specific minute yet
-         if (lastNotificationMinute.current !== currentMinuteStr) {
-             
-             // 1. Trigger In-App Alarm (Always works if app is open)
-             setIsAlarmActive(true);
+        // Only trigger if we haven't triggered for this specific minute yet
+        if (lastNotificationMinute.current !== currentMinuteStr) {
 
-             // 2. Try System Notification
-             if ("Notification" in window && Notification.permission === "granted") {
-                new Notification(t.title, {
-                  body: t.reminder_desc
-                });
-             }
-             
-             lastNotificationMinute.current = currentMinuteStr;
-         }
+          // 1. Trigger In-App Alarm (Always works if app is open)
+          setIsAlarmActive(true);
+
+          // 2. Try System Notification
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(t.title, {
+              body: t.reminder_desc
+            });
+          }
+
+          lastNotificationMinute.current = currentMinuteStr;
+        }
       }
     };
 
     const intervalId = setInterval(checkTime, 1000);
-    
+
     // Cleanup
     return () => clearInterval(intervalId);
   }, [currentUser.reminderTime, t]);
 
   return (
     <div className="space-y-12 py-4 relative">
-      
+
       {/* --- In-App Alarm Modal (Ensures visibility) --- */}
       {isAlarmActive && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative border border-brand-100 animate-in zoom-in-95 duration-300">
-              <button 
-                onClick={handleDismissAlarm}
-                className="absolute top-4 right-4 text-stone-400 hover:text-stone-600"
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative border border-brand-100 animate-in zoom-in-95 duration-300">
+            <button
+              onClick={handleDismissAlarm}
+              className="absolute top-4 right-4 text-stone-400 hover:text-stone-600"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+              <BellRing size={40} className="text-brand-600" />
+            </div>
+
+            <h3 className="font-serif text-2xl text-stone-800 mb-2">{t.reminder_section}</h3>
+            <p className="text-stone-600 mb-8 leading-relaxed">
+              {t.reminder_desc}
+              <br />
+              <span className="text-sm text-brand-500 font-medium mt-2 block">{currentUser.reminderTime}</span>
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  handleDismissAlarm();
+                  setCurrentView('journal');
+                }}
+                className="w-full bg-brand-600 text-white py-3 rounded-xl font-medium shadow-lg shadow-brand-200 hover:bg-brand-700 transition-colors"
               >
-                <X size={20} />
+                {t.card_journal_action}
               </button>
-              
-              <div className="w-20 h-20 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
-                <BellRing size={40} className="text-brand-600" />
-              </div>
-              
-              <h3 className="font-serif text-2xl text-stone-800 mb-2">{t.reminder_section}</h3>
-              <p className="text-stone-600 mb-8 leading-relaxed">
-                {t.reminder_desc}
-                <br />
-                <span className="text-sm text-brand-500 font-medium mt-2 block">{currentUser.reminderTime}</span>
-              </p>
-              
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    handleDismissAlarm();
-                    setCurrentView('journal');
-                  }}
-                  className="w-full bg-brand-600 text-white py-3 rounded-xl font-medium shadow-lg shadow-brand-200 hover:bg-brand-700 transition-colors"
-                >
-                  {t.card_journal_action}
-                </button>
-                <button
-                  onClick={handleDismissAlarm}
-                  className="w-full py-3 text-stone-500 hover:text-stone-700 text-sm"
-                >
-                  {t.btn_cancel}
-                </button>
-              </div>
-           </div>
+              <button
+                onClick={handleDismissAlarm}
+                className="w-full py-3 text-stone-500 hover:text-stone-700 text-sm"
+              >
+                {t.btn_cancel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -150,41 +150,41 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
             {currentUser.reminderTime ? <BellRing size={20} /> : <Bell size={20} />}
           </div>
           <div>
-             <h3 className="text-sm font-semibold text-stone-700">{t.reminder_section}</h3>
-             <p className="text-xs text-stone-500">{t.reminder_desc}</p>
+            <h3 className="text-sm font-semibold text-stone-700">{t.reminder_section}</h3>
+            <p className="text-xs text-stone-500">{t.reminder_desc}</p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-           {isSettingReminder ? (
-             <div className="flex items-center gap-2">
-               <input 
-                 type="time" 
-                 value={reminderTime}
-                 onChange={(e) => setReminderTime(e.target.value)}
-                 className="px-3 py-1.5 rounded-lg border border-brand-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
-               />
-               <button 
-                 onClick={handleSetReminder}
-                 className="bg-brand-500 text-white p-2 rounded-lg hover:bg-brand-600 transition-colors"
-               >
-                 <Check size={16} />
-               </button>
-             </div>
-           ) : (
-             <button 
-               onClick={() => setIsSettingReminder(true)}
-               className={`px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                 currentUser.reminderTime 
-                  ? 'bg-brand-50 border-brand-200 text-brand-700' 
+          {isSettingReminder ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={reminderTime}
+                onChange={(e) => setReminderTime(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-brand-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
+              />
+              <button
+                onClick={handleSetReminder}
+                className="bg-brand-500 text-white p-2 rounded-lg hover:bg-brand-600 transition-colors"
+              >
+                <Check size={16} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsSettingReminder(true)}
+              className={`px-4 py-2 rounded-full text-xs font-medium border transition-all ${currentUser.reminderTime
+                  ? 'bg-brand-50 border-brand-200 text-brand-700'
                   : 'bg-white border-stone-200 text-stone-600 hover:border-brand-300'
-               }`}
-             >
-               {currentUser.reminderTime ? `${currentUser.reminderTime}` : t.reminder_btn_set}
-             </button>
-           )}
+                }`}
+            >
+              {currentUser.reminderTime ? `${currentUser.reminderTime}` : t.reminder_btn_set}
+            </button>
+          )}
         </div>
       </div>
+
       {notificationStatus && (
         <div className="text-center text-xs text-brand-600 font-medium animate-pulse">
           {notificationStatus}
@@ -193,16 +193,16 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
 
       {/* Cards Grid */}
       <div className="grid grid-cols-1 gap-6">
-        
+
         {/* Journal Card */}
-        <div 
+        <div
           onClick={() => setCurrentView('journal')}
           className="bg-white rounded-3xl p-8 shadow-sm border border-brand-100/50 hover:shadow-lg hover:border-brand-200 transition-all duration-300 cursor-pointer group relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
             <Edit3 size={120} className="text-brand-300 rotate-12 transform translate-x-8 -translate-y-8" />
           </div>
-          
+
           <div className="flex justify-between items-start relative z-10">
             <div className="space-y-4 max-w-lg">
               <h2 className="font-serif text-2xl font-bold text-stone-800 group-hover:text-brand-700 transition-colors">
@@ -217,7 +217,7 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
                 </span>
               </div>
             </div>
-            
+
             <div className="hidden sm:flex bg-brand-50 w-16 h-16 rounded-2xl items-center justify-center text-brand-500 group-hover:bg-brand-500 group-hover:text-white transition-colors duration-300 shadow-inner">
               <Edit3 size={32} />
             </div>
@@ -225,7 +225,7 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
         </div>
 
         {/* Manifestation Card */}
-        <div 
+        <div
           onClick={() => setCurrentView('manifestation')}
           className="bg-white rounded-3xl p-8 shadow-sm border border-brand-100/50 hover:shadow-lg hover:border-brand-200 transition-all duration-300 cursor-pointer group relative overflow-hidden"
         >
@@ -244,6 +244,43 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
               <div className="pt-4">
                 <span className="text-brand-600 font-medium text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                   {t.card_manifest_action}
+                </span>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex bg-brand-50 w-16 h-16 rounded-2xl items-center justify-center text-brand-500 group-hover:bg-brand-500 group-hover:text-white transition-colors duration-300 shadow-inner">
+              <Sparkles size={32} />
+            </div>
+          </div>
+        </div>
+
+        {/* ✅ Member Space Card (Coming Soon) */}
+        <div
+          onClick={() => setCurrentView('billing')}
+          className="bg-white rounded-3xl p-8 shadow-sm border border-brand-100/50 hover:shadow-lg hover:border-brand-200 transition-all duration-300 cursor-pointer group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Sparkles size={120} className="text-brand-300 rotate-12 transform translate-x-8 -translate-y-8" />
+          </div>
+
+          <div className="flex justify-between items-start relative z-10">
+            <div className="space-y-4 max-w-lg">
+              <h2 className="font-serif text-2xl font-bold text-stone-800 group-hover:text-brand-700 transition-colors">
+                {language === 'zh' ? '会员空间' : 'Member Space'}
+                <span className="ml-2 text-sm font-medium text-stone-400">
+                  {language === 'zh' ? '（即将到来）' : '(Coming Soon)'}
+                </span>
+              </h2>
+
+              <p className="text-stone-500 leading-relaxed text-sm sm:text-base">
+                {language === 'zh'
+                  ? '这里会逐步开放：免费资源、课程与分享内容。解锁体验后即可进入。'
+                  : 'This space will gradually open: free resources, courses and shared content. Unlock to access.'}
+              </p>
+
+              <div className="pt-4">
+                <span className="text-brand-600 font-medium text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                  {language === 'zh' ? '去看看解锁体验 →' : 'Go to Unlock →'}
                 </span>
               </div>
             </div>

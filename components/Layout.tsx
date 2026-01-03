@@ -1,7 +1,7 @@
 import React from 'react';
 import { ViewType, Language, User } from '../types';
 import { translations } from '../i18n';
-import { Home, BookOpen, Sparkles, History, LogOut } from 'lucide-react';
+import { Home, BookOpen, Sparkles, History, LogOut, Crown } from 'lucide-react';
 
 interface LayoutProps {
   currentView: ViewType;
@@ -13,28 +13,32 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const Layout: React.FC<LayoutProps> = ({ 
-  currentView, 
-  setCurrentView, 
+const Layout: React.FC<LayoutProps> = ({
+  currentView,
+  setCurrentView,
   language,
   setLanguage,
   currentUser,
   onLogout,
-  children 
+  children
 }) => {
   const t = translations[language];
+
+  // ✅ 不依赖 i18n 新增字段，避免你还要去改 translations
+  const unlockLabel = language === 'zh' ? '解锁体验' : 'Unlock';
+  const unlockTitle = language === 'zh' ? '解锁体验' : 'Unlock';
 
   const NavItem = ({ view, icon: Icon, label }: { view: ViewType; icon: any; label: string }) => (
     <button
       onClick={() => setCurrentView(view)}
-      className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 text-sm font-medium ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 font-medium whitespace-nowrap ${
         currentView === view
           ? 'bg-brand-500 text-white shadow-md'
           : 'text-stone-500 hover:text-brand-600 hover:bg-brand-50'
-      }`}
+      } text-xs`}
     >
-      <Icon size={18} />
-      <span className="hidden sm:inline">{label}</span>
+      <Icon size={16} />
+      <span className="hidden sm:inline leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 
@@ -44,9 +48,11 @@ const Layout: React.FC<LayoutProps> = ({
       <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-brand-100">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            
             {/* Logo Section */}
-            <div className="flex flex-col items-center md:items-start cursor-pointer" onClick={() => setCurrentView('home')}>
+            <div
+              className="flex flex-col items-center md:items-start cursor-pointer"
+              onClick={() => setCurrentView('home')}
+            >
               <h1 className="font-serif text-3xl font-bold text-brand-600 tracking-wide flex items-baseline">
                 InsightL<span className="text-red-500 font-normal relative top-[1px] mx-[1px] text-3xl">∞</span>p
               </h1>
@@ -62,26 +68,29 @@ const Layout: React.FC<LayoutProps> = ({
                 <NavItem view="journal" icon={BookOpen} label={t.nav_journal} />
                 <NavItem view="manifestation" icon={Sparkles} label={t.nav_manifestation} />
                 <NavItem view="history" icon={History} label={t.nav_history} />
+
+                {/* ✅ 新增：只加顶部导航栏 - 解锁体验（接到 Billing） */}
+                <NavItem view="billing" icon={Crown} label={unlockLabel} />
               </nav>
 
               <div className="flex items-center gap-3">
                 <div className="flex bg-white rounded-lg border border-brand-100 p-1 shadow-sm">
-                   <button
-                     onClick={() => setLanguage('en')}
-                     className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                       language === 'en' ? 'bg-brand-100 text-brand-700' : 'text-stone-400 hover:text-stone-600'
-                     }`}
-                   >
-                     EN
-                   </button>
-                   <button
-                     onClick={() => setLanguage('zh')}
-                     className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                       language === 'zh' ? 'bg-brand-100 text-brand-700' : 'text-stone-400 hover:text-stone-600'
-                     }`}
-                   >
-                     中文
-                   </button>
+                  <button
+                    onClick={() => setLanguage('en')}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      language === 'en' ? 'bg-brand-100 text-brand-700' : 'text-stone-400 hover:text-stone-600'
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    onClick={() => setLanguage('zh')}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      language === 'zh' ? 'bg-brand-100 text-brand-700' : 'text-stone-400 hover:text-stone-600'
+                    }`}
+                  >
+                    中文
+                  </button>
                 </div>
 
                 {currentUser && (
@@ -89,7 +98,7 @@ const Layout: React.FC<LayoutProps> = ({
                     <span className="text-xs font-medium text-stone-500 hidden lg:block">
                       {currentUser.name}
                     </span>
-                    <button 
+                    <button
                       onClick={onLogout}
                       className="text-stone-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
                       title={t.auth_logout}

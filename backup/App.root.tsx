@@ -4,17 +4,9 @@ import Auth from "./components/Auth";
 import Home from "./components/Home";
 import Journal from "./components/Journal";
 import Manifestation from "./components/Manifestation";
-import Billing from "./components/Billing";
 import Paywall from "./components/Paywall";
-
 import { getMyEntitlement, isPaywallActive } from "./services/entitlements";
-import {
-  JournalEntry,
-  ManifestationItem,
-  ViewType,
-  Language,
-  User,
-} from "./types";
+import { JournalEntry, ManifestationItem, ViewType, Language, User } from "./types";
 
 function App() {
   // Auth State
@@ -36,7 +28,7 @@ function App() {
   const [paywall, setPaywall] = useState(false);
   const [paywallChecked, setPaywallChecked] = useState(false);
 
-  // 1) Initial Load (Check for existing session)
+  // 1. Initial Load (Check for existing session)
   useEffect(() => {
     const savedSession = localStorage.getItem("insightLoop_session");
     const savedLang = localStorage.getItem("insightLoop_lang_global");
@@ -54,9 +46,10 @@ function App() {
     setIsAppReady(true);
   }, []);
 
-  // 2) Load User Data when User Changes
+  // 2. Load User Data when User Changes
   useEffect(() => {
     if (!currentUser) {
+      // Clear sensitive data from memory on logout
       setEntries([]);
       setGoals([]);
       setPaywall(false);
@@ -82,7 +75,7 @@ function App() {
     }
   }, [currentUser]);
 
-  // 3) Save User Data on Change
+  // 3. Save User Data on Change
   useEffect(() => {
     if (currentUser && isAppReady) {
       const userKey = `insightLoop_data_${currentUser.email}`;
@@ -91,26 +84,19 @@ function App() {
     }
   }, [entries, goals, currentUser, isAppReady, language]);
 
-  // 4) Persist Language Global Preference
+  // 4. Persist Language Global Preference
   useEffect(() => {
     localStorage.setItem("insightLoop_lang_global", language);
   }, [language]);
 
-  // 5) Check Paywall (after login)
+  // 5. Check Paywall (after login)
   useEffect(() => {
     if (!currentUser) return;
 
     (async () => {
-      try {
-        const ent = await getMyEntitlement();
-        setPaywall(isPaywallActive(ent));
-      } catch (e) {
-        // 如果 entitlement 读取失败：不要把用户锁死，先让 UI 能继续用
-        console.error("Entitlement check failed:", e);
-        setPaywall(false);
-      } finally {
-        setPaywallChecked(true);
-      }
+      const ent = await getMyEntitlement();
+      setPaywall(isPaywallActive(ent));
+      setPaywallChecked(true);
     })();
   }, [currentUser]);
 
@@ -195,9 +181,7 @@ function App() {
   if (!isAppReady) return null;
 
   if (!currentUser) {
-    return (
-      <Auth onLogin={handleLogin} language={language} setLanguage={setLanguage} />
-    );
+    return <Auth onLogin={handleLogin} language={language} setLanguage={setLanguage} />;
   }
 
   // Wait paywall check (avoid flashing UI)
@@ -217,7 +201,6 @@ function App() {
             onUpdateUser={handleUpdateUser}
           />
         );
-
       case "journal":
         return (
           <Journal
@@ -231,7 +214,6 @@ function App() {
             onCancelEdit={handleCancelEdit}
           />
         );
-
       case "manifestation":
         return (
           <Manifestation
@@ -243,7 +225,6 @@ function App() {
             language={language}
           />
         );
-
       case "history":
         return (
           <Journal
@@ -256,10 +237,6 @@ function App() {
             onEditEntry={handleEditEntry}
           />
         );
-
-      case "billing":
-        return <Billing language={language} />;
-
       default:
         return (
           <Home

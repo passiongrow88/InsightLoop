@@ -1,8 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { JournalEntry, Language } from '../types';
 import { generateJournalInsight } from '../services/geminiService';
+import { saveJournal, loadJournals } from '../services/cloudStore';
 import { translations } from '../i18n';
-import { Loader2, Send, ChevronDown, ChevronUp, History, Sparkles, Heart, Save, FileEdit, PenSquare, RefreshCcw, Trash2, X, Check, MessageCircle, CloudMoon, BrainCircuit, Hash } from 'lucide-react';
+import {
+  Loader2, Send, ChevronDown, ChevronUp, History, Sparkles,
+  Heart, Save, FileEdit, PenSquare, RefreshCcw, Trash2,
+  X, Check, MessageCircle, CloudMoon, BrainCircuit, Hash
+} from 'lucide-react';
 
 interface JournalProps {
   entries: JournalEntry[];
@@ -107,15 +112,18 @@ const Journal: React.FC<JournalProps> = ({
       // Regenerate insight
       const response = await generateJournalInsight(entryToProcess, entries.slice(0, 30), language); 
       const finalEntry = { ...entryToProcess, aiResponse: response };
-      
+      await saveJournal(finalEntry);
       if (editingEntry) {
-        onUpdateEntry(finalEntry);
-        if(onCancelEdit) onCancelEdit(); // Clear edit mode
-      } else {
-        onAddEntry(finalEntry);
-        // Clear draft
-        localStorage.removeItem('insightLoop_draft');
-      }
+  onUpdateEntry(finalEntry);
+  await saveJournal(finalEntry);
+  if (onCancelEdit) onCancelEdit(); // Clear edit mode
+} else {
+  onAddEntry(finalEntry);
+  await saveJournal(finalEntry);
+  // Clear draft
+  localStorage.removeItem('insightLoop_draft');
+}
+
       
       // Reset form
       setFormData({

@@ -10,8 +10,12 @@ const API_ENDPOINT = "/api/gemini";
 /**
  * ✅ v1beta confirmed supported model
  * (must align with backend /api/gemini.ts)
+ *
+ * IMPORTANT:
+ * - Backend already supports Gemini 3 Pro Preview
+ * - Keep model string WITHOUT "models/" prefix if your backend strips/normalizes it
  */
-const MODEL_NAME = "gemini-1.0-pro";
+const MODEL_NAME = "gemini-3-pro-preview";
 
 /**
  * ================================
