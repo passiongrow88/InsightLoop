@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 创建 Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      payment_method_types: ['card', 'grabpay'],  // PayNow 不支持订阅
+      payment_method_types: ['card', 'grabpay'],  
       line_items: [
         {
           price: priceId,
