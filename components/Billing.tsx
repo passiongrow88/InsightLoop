@@ -421,7 +421,7 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
         ? import.meta.env.VITE_STRIPE_PRICE_YEARLY
         : import.meta.env.VITE_STRIPE_PRICE_MONTHLY;
 
-      const response = await fetch('/api/create-checkout', {
+      const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
