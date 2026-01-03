@@ -1,3 +1,4 @@
+// Updated: 2026-01-03 19:30 - Removed PayNow
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
 
