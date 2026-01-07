@@ -10,6 +10,8 @@ import MemberSpace from "./components/MemberSpace";
 import AdminResourceUpload from "./components/AdminResourceUpload";
 
 import { getMyEntitlement, isPaywallActive } from "./services/entitlements";
+
+// ✅ 这里一定是 ./services/cloudStore （因为你的文件在 services/ 不是 src/services）
 import {
   loadJournals,
   saveJournal,
@@ -28,29 +30,23 @@ import {
 } from "./types";
 
 function App() {
-  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // App State
   const [currentView, setCurrentView] = useState<ViewType>("home");
   const [language, setLanguage] = useState<Language>("zh");
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
 
-  // Data State
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [goals, setGoals] = useState<ManifestationItem[]>([]);
 
-  // Loading & Initialization
   const [isAppReady, setIsAppReady] = useState(false);
 
-  // Paywall State
   const [paywall, setPaywall] = useState(false);
   const [paywallChecked, setPaywallChecked] = useState(false);
 
-  // Cloud data loaded state (avoid empty flash)
   const [cloudLoaded, setCloudLoaded] = useState(false);
 
-  // 1) Initial Load (Check for existing session)
+  // 1) Initial Load
   useEffect(() => {
     const savedSession = localStorage.getItem("insightLoop_session");
     const savedLang = localStorage.getItem("insightLoop_lang_global");
@@ -69,7 +65,7 @@ function App() {
     setIsAppReady(true);
   }, []);
 
-  // 2) Load User Data when User Changes (NOW: from Supabase tables via cloudStore.ts)
+  // 2) Load from Cloud when user changes (跨设备关键)
   useEffect(() => {
     if (!currentUser) {
       setEntries([]);
@@ -88,9 +84,9 @@ function App() {
         setEntries(j || []);
         setGoals(g || []);
       } catch (e) {
-        console.error("Error loading cloud data", e);
+        console.error("Cloud load failed, fallback to local cache:", e);
 
-        // optional fallback cache (not source of truth)
+        // fallback cache (仅备用)
         const userKey = `insightLoop_data_${currentUser.email}`;
         const userDataStr = localStorage.getItem(userKey);
         if (userDataStr) {
@@ -107,21 +103,23 @@ function App() {
     })();
   }, [currentUser]);
 
-  // 3) Lightweight local cache (optional, for quick fallback only)
+  // 3) local cache (备用，不是主数据源)
   useEffect(() => {
     if (currentUser && isAppReady) {
       const userKey = `insightLoop_data_${currentUser.email}`;
-      const userData = { entries, goals, language };
-      localStorage.setItem(userKey, JSON.stringify(userData));
+      localStorage.setItem(
+        userKey,
+        JSON.stringify({ entries, goals, language })
+      );
     }
   }, [entries, goals, currentUser, isAppReady, language]);
 
-  // 4) Persist Language Global Preference
+  // 4) global language
   useEffect(() => {
     localStorage.setItem("insightLoop_lang_global", language);
   }, [language]);
 
-  // 5) Check Paywall (after login)
+  // 5) Check Paywall
   useEffect(() => {
     if (!currentUser) return;
 
@@ -170,22 +168,19 @@ function App() {
     }
   };
 
-  // --- Journal CRUD (NOW: write to journal_entries) ---
-
+  // --- Journal (Cloud) ---
   const handleAddEntry = async (entry: JournalEntry) => {
-    // optimistic UI
     setEntries((prev) => [entry, ...prev]);
     setCurrentView("history");
     setEditingEntry(null);
 
     try {
       await saveJournal(entry);
-      // reload from cloud to ensure IDs/ordering correct
       const j = await loadJournals();
       setEntries(j || []);
     } catch (e) {
-      console.error("Create journal entry failed", e);
-      alert("保存失败：云端写入失败（请确认已登录 + 网络正常）");
+      console.error("saveJournal failed", e);
+      alert("保存失败：云端写入失败");
     }
   };
 
@@ -201,8 +196,8 @@ function App() {
       const j = await loadJournals();
       setEntries(j || []);
     } catch (e) {
-      console.error("Update journal entry failed", e);
-      alert("更新失败：云端更新失败（请刷新后重试）");
+      console.error("update journal failed", e);
+      alert("更新失败：云端更新失败");
     }
   };
 
@@ -215,9 +210,9 @@ function App() {
       const j = await loadJournals();
       setEntries(j || []);
     } catch (e) {
-      console.error("Delete journal entry failed", e);
+      console.error("delete journal failed", e);
       setEntries(snapshot);
-      alert("删除失败：云端删除失败（请刷新后重试）");
+      alert("删除失败：云端删除失败");
     }
   };
 
@@ -231,8 +226,7 @@ function App() {
     setCurrentView("history");
   };
 
-  // --- Manifestation CRUD (NOW: write to manifestations) ---
-
+  // --- Goals (Cloud) ---
   const handleAddGoal = async (goal: ManifestationItem) => {
     setGoals((prev) => [goal, ...prev]);
 
@@ -241,8 +235,8 @@ function App() {
       const g = await loadGoals();
       setGoals(g || []);
     } catch (e) {
-      console.error("Create goal failed", e);
-      alert("保存失败：显化目标云端写入失败");
+      console.error("saveGoal failed", e);
+      alert("保存失败：显化云端写入失败");
     }
   };
 
@@ -256,8 +250,8 @@ function App() {
       const g = await loadGoals();
       setGoals(g || []);
     } catch (e) {
-      console.error("Update goal failed", e);
-      alert("更新失败：显化目标云端更新失败");
+      console.error("update goal failed", e);
+      alert("更新失败：显化云端更新失败");
     }
   };
 
@@ -270,9 +264,9 @@ function App() {
       const g = await loadGoals();
       setGoals(g || []);
     } catch (e) {
-      console.error("Delete goal failed", e);
+      console.error("delete goal failed", e);
       setGoals(snapshot);
-      alert("删除失败：显化目标云端删除失败");
+      alert("删除失败：显化云端删除失败");
     }
   };
 
@@ -282,7 +276,6 @@ function App() {
   };
 
   // --- Render ---
-
   if (!isAppReady) return null;
 
   if (!currentUser) {
@@ -293,6 +286,8 @@ function App() {
 
   if (!paywallChecked) return null;
   if (paywall) return <Paywall />;
+
+  // ✅ 这句是避免你登录后 “空一下”，等云端数据回来
   if (!cloudLoaded) return null;
 
   const renderContent = () => {
@@ -386,9 +381,7 @@ function App() {
       language={language}
       setLanguage={setLanguage}
       currentUser={currentUser}
-      onLogout={() => {
-        handleLogout();
-      }}
+      onLogout={handleLogout}
     >
       {renderContent()}
     </Layout>
