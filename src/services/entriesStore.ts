@@ -1,101 +1,144 @@
 import { supabase } from "./supabaseClient";
+import type { JournalEntry, ManifestationItem } from "../types";
 
 export type EntryType = "journal" | "manifestation";
 
-type DbRow = {
-  id: string;
-  user_id: string;
-  type: EntryType;
-  content: any; // text or json/jsonb
-  created_at?: string;
-  updated_at?: string;
-};
+// ✅ 对齐你真实 Supabase 表名（你现在数据就在这里）
+const TABLE_JOURNAL = "journal_entries";
+const TABLE_MANIFEST = "manifestations";
 
-function safeParseContent(raw: any) {
-  // content might be:
-  // - stringified JSON (text)
-  // - JSON object (jsonb)
-  // - plain string (older)
-  if (raw == null) return null;
-  if (typeof raw === "object") return raw;
-  if (typeof raw === "string") {
-    const s = raw.trim();
-    if (!s) return null;
-    try {
-      return JSON.parse(s);
-    } catch {
-      return raw; // fallback to raw string
-    }
-  }
-  return raw;
+// --- helpers ---
+async function requireUid(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const uid = data.user?.id;
+  if (!uid) throw new Error("Not authenticated: missing user id.");
+  return uid;
 }
 
-function safeStringifyContent(payload: any) {
-  // If your DB column is TEXT, we must stringify.
-  // If it's JSONB, stringifying is still accepted but stores a string; not ideal but safe.
-  // We accept this safety trade-off for "小白不踩坑".
-  try {
-    return JSON.stringify(payload);
-  } catch {
-    return JSON.stringify({ _raw: String(payload) });
-  }
+function mapJournalRowToEntry(r: any): JournalEntry {
+  return {
+    id: r.id,
+    date: r.date || "",
+    event: r.event || "",
+    reflection: r.reflection || "",
+    gratitude: r.gratitude || "",
+    selfTalk: r.self_talk || "",
+    angelNumbers: r.angel_numbers || "",
+    dreams: r.dreams || "",
+    loveTarget: r.love_target || "",
+    apologyTarget: r.apology_target || "",
+    insight: r.insight || "",
+  } as JournalEntry;
 }
 
+function mapManifestRowToItem(r: any): ManifestationItem {
+  return {
+    id: r.id,
+    goal: r.goal || "",
+    expectedDate: r.expected_date || "",
+    reason: r.reason || "",
+    createdAt: r.created_at || "",
+  } as ManifestationItem;
+}
+
+// ✅ App.tsx 用到的 4 个函数：保持名字不变（不影响 UI/功能）
 export async function listEntries<T>(type: EntryType): Promise<T[]> {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const uid = await requireUid();
 
-  if (userErr || !user) throw new Error("Not authenticated");
+  if (type === "journal") {
+    const { data, error } = await supabase
+      .from(TABLE_JOURNAL)
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
 
+    if (error) throw error;
+    return ((data || []).map(mapJournalRowToEntry) as unknown) as T[];
+  }
+
+  // manifestation
   const { data, error } = await supabase
-    .from("entries")
-    .select("id,user_id,type,content,created_at,updated_at")
-    .eq("user_id", user.id)
-    .eq("type", type)
+    .from(TABLE_MANIFEST)
+    .select("*")
+    .eq("user_id", uid)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-
-  const rows = (data || []) as DbRow[];
-
-  return rows
-    .map((r) => {
-      const parsed = safeParseContent(r.content);
-      // ensure the object has id
-      if (parsed && typeof parsed === "object") {
-        return { ...parsed, id: parsed.id ?? r.id } as T;
-      }
-      // if parsed is string, wrap it
-      return ({ id: r.id, content: parsed } as unknown) as T;
-    })
-    .filter(Boolean) as T[];
+  return ((data || []).map(mapManifestRowToItem) as unknown) as T[];
 }
 
 export async function createEntry<T extends { id?: string }>(
   type: EntryType,
   payload: T
 ): Promise<string> {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const uid = await requireUid();
 
-  if (userErr || !user) throw new Error("Not authenticated");
+  // --- journal_entries ---
+  if (type === "journal") {
+    const e = payload as any as JournalEntry;
+
+    const row: any = {
+      user_id: uid,
+      date: e.date || "",
+      event: e.event || "",
+      reflection: e.reflection || "",
+      gratitude: e.gratitude || "",
+      self_talk: (e as any).selfTalk || "",
+      angel_numbers: (e as any).angelNumbers || "",
+      dreams: (e as any).dreams || "",
+      love_target: (e as any).loveTarget || "",
+      apology_target: (e as any).apologyTarget || "",
+      insight: (e as any).insight || "",
+    };
+
+    // 如果你前端已经有 id（例如 uuid），就沿用
+    if ((e as any).id) {
+      row.id = (e as any).id;
+      const { error } = await supabase
+        .from(TABLE_JOURNAL)
+        .upsert(row, { onConflict: "id" });
+      if (error) throw error;
+      return (e as any).id as string;
+    }
+
+    // 否则让 DB 生成 id
+    const { data, error } = await supabase
+      .from(TABLE_JOURNAL)
+      .insert(row)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return (data as any).id as string;
+  }
+
+  // --- manifestations ---
+  const g = payload as any as ManifestationItem;
+  const row: any = {
+    user_id: uid,
+    goal: g.goal || "",
+    expected_date: (g as any).expectedDate || "",
+    reason: g.reason || "",
+  };
+
+  if ((g as any).id) {
+    row.id = (g as any).id;
+    const { error } = await supabase
+      .from(TABLE_MANIFEST)
+      .upsert(row, { onConflict: "id" });
+    if (error) throw error;
+    return (g as any).id as string;
+  }
 
   const { data, error } = await supabase
-    .from("entries")
-    .insert({
-      user_id: user.id,
-      type,
-      content: safeStringifyContent(payload),
-    })
+    .from(TABLE_MANIFEST)
+    .insert(row)
     .select("id")
     .single();
 
   if (error) throw error;
-  return (data as any)?.id as string;
+  return (data as any).id as string;
 }
 
 export async function updateEntry<T>(
@@ -103,42 +146,59 @@ export async function updateEntry<T>(
   type: EntryType,
   payload: T
 ): Promise<void> {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const uid = await requireUid();
 
-  if (userErr || !user) throw new Error("Not authenticated");
+  if (type === "journal") {
+    const e = payload as any as JournalEntry;
+    const row: any = {
+      id,
+      user_id: uid,
+      date: e.date || "",
+      event: e.event || "",
+      reflection: e.reflection || "",
+      gratitude: e.gratitude || "",
+      self_talk: (e as any).selfTalk || "",
+      angel_numbers: (e as any).angelNumbers || "",
+      dreams: (e as any).dreams || "",
+      love_target: (e as any).loveTarget || "",
+      apology_target: (e as any).apologyTarget || "",
+      insight: (e as any).insight || "",
+    };
+
+    const { error } = await supabase
+      .from(TABLE_JOURNAL)
+      .upsert(row, { onConflict: "id" });
+
+    if (error) throw error;
+    return;
+  }
+
+  const g = payload as any as ManifestationItem;
+  const row: any = {
+    id,
+    user_id: uid,
+    goal: g.goal || "",
+    expected_date: (g as any).expectedDate || "",
+    reason: g.reason || "",
+  };
 
   const { error } = await supabase
-    .from("entries")
-    .update({
-      content: safeStringifyContent(payload),
-    })
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("type", type);
+    .from(TABLE_MANIFEST)
+    .upsert(row, { onConflict: "id" });
 
   if (error) throw error;
 }
 
-export async function deleteEntry(
-  id: string,
-  type: EntryType
-): Promise<void> {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+export async function deleteEntry(id: string, type: EntryType): Promise<void> {
+  const uid = await requireUid();
 
-  if (userErr || !user) throw new Error("Not authenticated");
+  const table = type === "journal" ? TABLE_JOURNAL : TABLE_MANIFEST;
 
   const { error } = await supabase
-    .from("entries")
+    .from(table)
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("type", type);
+    .eq("user_id", uid);
 
   if (error) throw error;
 }
