@@ -11,11 +11,13 @@ import AdminResourceUpload from "./components/AdminResourceUpload";
 
 import { getMyEntitlement, isPaywallActive } from "./services/entitlements";
 import {
-  listEntries,
-  createEntry,
-  updateEntry,
-  deleteEntry,
-} from "./services/entriesStore";
+  loadJournals,
+  saveJournal,
+  deleteJournal,
+  loadGoals,
+  saveGoal,
+  deleteGoal,
+} from "./services/cloudStore";
 
 import {
   JournalEntry,
@@ -45,7 +47,7 @@ function App() {
   const [paywall, setPaywall] = useState(false);
   const [paywallChecked, setPaywallChecked] = useState(false);
 
-  // Data loading indicator (avoid flashing empty lists)
+  // Cloud data loaded state (avoid empty flash)
   const [cloudLoaded, setCloudLoaded] = useState(false);
 
   // 1) Initial Load (Check for existing session)
@@ -63,10 +65,11 @@ function App() {
         console.error("Invalid session", e);
       }
     }
+
     setIsAppReady(true);
   }, []);
 
-  // 2) Load User Data when User Changes (NOW: from Supabase)
+  // 2) Load User Data when User Changes (NOW: from Supabase tables via cloudStore.ts)
   useEffect(() => {
     if (!currentUser) {
       setEntries([]);
@@ -81,18 +84,13 @@ function App() {
 
     (async () => {
       try {
-        const [journalRows, manifestRows] = await Promise.all([
-          listEntries<JournalEntry>("journal"),
-          listEntries<ManifestationItem>("manifestation"),
-        ]);
-
-        setEntries(journalRows || []);
-        setGoals(manifestRows || []);
+        const [j, g] = await Promise.all([loadJournals(), loadGoals()]);
+        setEntries(j || []);
+        setGoals(g || []);
       } catch (e) {
         console.error("Error loading cloud data", e);
 
-        // Fallback: if user previously had local cache, we can still show it.
-        // (But local is NOT source of truth; just for user comfort.)
+        // optional fallback cache (not source of truth)
         const userKey = `insightLoop_data_${currentUser.email}`;
         const userDataStr = localStorage.getItem(userKey);
         if (userDataStr) {
@@ -109,9 +107,7 @@ function App() {
     })();
   }, [currentUser]);
 
-  // 3) Save User Data on Change
-  // ✅ We no longer persist entries/goals to localStorage as primary storage
-  // ✅ Optional: keep a lightweight cache for fallback (safe)
+  // 3) Lightweight local cache (optional, for quick fallback only)
   useEffect(() => {
     if (currentUser && isAppReady) {
       const userKey = `insightLoop_data_${currentUser.email}`;
@@ -174,7 +170,7 @@ function App() {
     }
   };
 
-  // --- Journal CRUD (NOW: write to Supabase) ---
+  // --- Journal CRUD (NOW: write to journal_entries) ---
 
   const handleAddEntry = async (entry: JournalEntry) => {
     // optimistic UI
@@ -183,21 +179,17 @@ function App() {
     setEditingEntry(null);
 
     try {
-      const newId = await createEntry("journal", entry);
-      // ensure local state id matches DB id for later update/delete
-      setEntries((prev) =>
-        prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
-      );
+      await saveJournal(entry);
+      // reload from cloud to ensure IDs/ordering correct
+      const j = await loadJournals();
+      setEntries(j || []);
     } catch (e) {
       console.error("Create journal entry failed", e);
-      // rollback
-      setEntries((prev) => prev.filter((x) => x !== entry));
-      alert("保存失败：云端写入失败（请确认已登录且网络正常）");
+      alert("保存失败：云端写入失败（请确认已登录 + 网络正常）");
     }
   };
 
   const handleUpdateEntry = async (updatedEntry: JournalEntry) => {
-    // optimistic
     setEntries((prev) =>
       prev.map((e) => (e.id === updatedEntry.id ? updatedEntry : e))
     );
@@ -205,8 +197,9 @@ function App() {
     setEditingEntry(null);
 
     try {
-      if (!updatedEntry.id) throw new Error("Missing entry id");
-      await updateEntry(updatedEntry.id, "journal", updatedEntry);
+      await saveJournal(updatedEntry);
+      const j = await loadJournals();
+      setEntries(j || []);
     } catch (e) {
       console.error("Update journal entry failed", e);
       alert("更新失败：云端更新失败（请刷新后重试）");
@@ -218,10 +211,12 @@ function App() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
 
     try {
-      await deleteEntry(id, "journal");
+      await deleteJournal(id);
+      const j = await loadJournals();
+      setEntries(j || []);
     } catch (e) {
       console.error("Delete journal entry failed", e);
-      setEntries(snapshot); // rollback
+      setEntries(snapshot);
       alert("删除失败：云端删除失败（请刷新后重试）");
     }
   };
@@ -236,19 +231,17 @@ function App() {
     setCurrentView("history");
   };
 
-  // --- Manifestation CRUD (NOW: write to Supabase) ---
+  // --- Manifestation CRUD (NOW: write to manifestations) ---
 
   const handleAddGoal = async (goal: ManifestationItem) => {
     setGoals((prev) => [goal, ...prev]);
 
     try {
-      const newId = await createEntry("manifestation", goal);
-      setGoals((prev) =>
-        prev.map((g) => (g === goal ? { ...g, id: g.id ?? newId } : g))
-      );
+      await saveGoal(goal);
+      const g = await loadGoals();
+      setGoals(g || []);
     } catch (e) {
       console.error("Create goal failed", e);
-      setGoals((prev) => prev.filter((x) => x !== goal));
       alert("保存失败：显化目标云端写入失败");
     }
   };
@@ -259,8 +252,9 @@ function App() {
     );
 
     try {
-      if (!updatedGoal.id) throw new Error("Missing goal id");
-      await updateEntry(updatedGoal.id, "manifestation", updatedGoal);
+      await saveGoal(updatedGoal);
+      const g = await loadGoals();
+      setGoals(g || []);
     } catch (e) {
       console.error("Update goal failed", e);
       alert("更新失败：显化目标云端更新失败");
@@ -272,7 +266,9 @@ function App() {
     setGoals((prev) => prev.filter((g) => g.id !== id));
 
     try {
-      await deleteEntry(id, "manifestation");
+      await deleteGoal(id);
+      const g = await loadGoals();
+      setGoals(g || []);
     } catch (e) {
       console.error("Delete goal failed", e);
       setGoals(snapshot);
@@ -295,13 +291,8 @@ function App() {
     );
   }
 
-  // Wait paywall check (avoid flashing UI)
   if (!paywallChecked) return null;
-
-  // Paywall block
   if (paywall) return <Paywall />;
-
-  // Optional: wait cloud load once after login (prevents "empty flash")
   if (!cloudLoaded) return null;
 
   const renderContent = () => {
@@ -360,7 +351,6 @@ function App() {
       case "billing":
         return <Billing language={language} />;
 
-      // ✅ 新增：会员空间
       case "member-space":
         return (
           <MemberSpace
@@ -369,7 +359,6 @@ function App() {
           />
         );
 
-      // ✅ 新增：管理员后台
       case "admin":
         return (
           <AdminResourceUpload
@@ -397,7 +386,9 @@ function App() {
       language={language}
       setLanguage={setLanguage}
       currentUser={currentUser}
-      onLogout={handleLogout}
+      onLogout={() => {
+        handleLogout();
+      }}
     >
       {renderContent()}
     </Layout>
