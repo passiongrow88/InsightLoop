@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewType, Language, User } from '../types';
 import { translations } from '../i18n';
-import { Edit3, Sparkles, Bell, BellRing, Check, X } from 'lucide-react';
+import { Edit3, Sparkles, Bell, BellRing, Check, X, Gift } from 'lucide-react';
 
 interface HomeProps {
   setCurrentView: (view: ViewType) => void;
@@ -254,39 +254,36 @@ const Home: React.FC<HomeProps> = ({ setCurrentView, language, currentUser, onUp
           </div>
         </div>
 
-        {/* ✅ Member Space Card (Coming Soon) */}
+        {/* ✅ Member Space Card - 现在链接到实际的 member-space 页面 */}
         <div
-          onClick={() => setCurrentView('billing')}
+          onClick={() => setCurrentView('member-space')}
           className="bg-white rounded-3xl p-8 shadow-sm border border-brand-100/50 hover:shadow-lg hover:border-brand-200 transition-all duration-300 cursor-pointer group relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Sparkles size={120} className="text-brand-300 rotate-12 transform translate-x-8 -translate-y-8" />
+            <Gift size={120} className="text-brand-300 rotate-12 transform translate-x-8 -translate-y-8" />
           </div>
 
           <div className="flex justify-between items-start relative z-10">
             <div className="space-y-4 max-w-lg">
               <h2 className="font-serif text-2xl font-bold text-stone-800 group-hover:text-brand-700 transition-colors">
                 {language === 'zh' ? '会员空间' : 'Member Space'}
-                <span className="ml-2 text-sm font-medium text-stone-400">
-                  {language === 'zh' ? '（即将到来）' : '(Coming Soon)'}
-                </span>
               </h2>
 
               <p className="text-stone-500 leading-relaxed text-sm sm:text-base">
                 {language === 'zh'
-                  ? '这里会逐步开放：免费资源、课程与分享内容。解锁体验后即可进入。'
-                  : 'This space will gradually open: free resources, courses and shared content. Unlock to access.'}
+                  ? '探索独家资源、课程与工具，助力你的成长之旅。'
+                  : 'Explore exclusive resources, courses and tools for your growth journey.'}
               </p>
 
               <div className="pt-4">
                 <span className="text-brand-600 font-medium text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                  {language === 'zh' ? '去看看解锁体验 →' : 'Go to Unlock →'}
+                  {language === 'zh' ? '进入会员空间 →' : 'Enter Member Space →'}
                 </span>
               </div>
             </div>
 
             <div className="hidden sm:flex bg-brand-50 w-16 h-16 rounded-2xl items-center justify-center text-brand-500 group-hover:bg-brand-500 group-hover:text-white transition-colors duration-300 shadow-inner">
-              <Sparkles size={32} />
+              <Gift size={32} />
             </div>
           </div>
         </div>

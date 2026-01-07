@@ -3,7 +3,7 @@ import { Language } from '../types';
 import { translations } from '../i18n';
 import { getMyEntitlement } from '../services/entitlements';
 import { supabase } from '../supabaseClient';
-import { Sparkles, BookOpen, Target, Brain, Gift, Clock, Check, CreditCard, Smartphone, X } from 'lucide-react';
+import { Sparkles, BookOpen, Target, Brain, Gift, Clock, Check, CreditCard, X } from 'lucide-react';
 
 interface BillingProps {
   language: Language;
@@ -393,10 +393,9 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
     ]
   };
 
+  // ✅ 关键：不改 UI 结构，只删选项：只保留 Card
   const paymentMethods = [
     { id: 'card', name: text.creditCard, icon: CreditCard, description: text.creditCardDesc },
-    { id: 'paynow', name: text.payNow, icon: Smartphone, description: text.payNowDesc },
-    { id: 'grabpay', name: text.grabPay, icon: Smartphone, description: text.grabPayDesc },
   ];
 
   const handlePayment = async () => {
@@ -440,6 +439,7 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
           priceId,
           userId: user.id,
           email: user.email,
+          plan: selectedPlan, // ✅ 可选：带上方便 webhook 记录
         }),
       });
 
@@ -465,7 +465,7 @@ const PurchaseView: React.FC<{ language: Language }> = ({ language }) => {
       
       // 移除加载状态
       const loadingDiv = document.querySelector('.fixed.inset-0');
-      if (loadingDiv) loadingDiv.remove();
+      if (loadingDiv) (loadingDiv as HTMLElement).remove();
       
       alert(
         language === 'zh'

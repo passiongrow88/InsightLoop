@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { JournalEntry, Language } from '../types';
+import { JournalEntry, Language, User } from '../types';
 import { generateJournalInsight } from '../services/geminiService';
 import { saveJournal, loadJournals } from '../services/cloudStore';
 import { translations } from '../i18n';
@@ -19,6 +19,7 @@ interface JournalProps {
   editingEntry?: JournalEntry | null;
   onEditEntry?: (entry: JournalEntry) => void;
   onCancelEdit?: () => void;
+  currentUser?: User | null;  // ✅ 新增：当前用户，用于获取名字
 }
 
 const Journal: React.FC<JournalProps> = ({ 
@@ -30,7 +31,8 @@ const Journal: React.FC<JournalProps> = ({
   viewOnly = false,
   editingEntry,
   onEditEntry,
-  onCancelEdit
+  onCancelEdit,
+  currentUser  // ✅ 新增
 }) => {
   const t = translations[language];
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,20 +111,21 @@ const Journal: React.FC<JournalProps> = ({
     };
 
     try {
-      // Regenerate insight
-      const response = await generateJournalInsight(entryToProcess, entries.slice(0, 30), language); 
+      // ✅ 修改：传入用户名字
+      const userName = currentUser?.name || '';
+      const response = await generateJournalInsight(entryToProcess, entries.slice(0, 30), language, userName); 
       const finalEntry = { ...entryToProcess, aiResponse: response };
       await saveJournal(finalEntry);
       if (editingEntry) {
-  onUpdateEntry(finalEntry);
-  await saveJournal(finalEntry);
-  if (onCancelEdit) onCancelEdit(); // Clear edit mode
-} else {
-  onAddEntry(finalEntry);
-  await saveJournal(finalEntry);
-  // Clear draft
-  localStorage.removeItem('insightLoop_draft');
-}
+        onUpdateEntry(finalEntry);
+        await saveJournal(finalEntry);
+        if (onCancelEdit) onCancelEdit(); // Clear edit mode
+      } else {
+        onAddEntry(finalEntry);
+        await saveJournal(finalEntry);
+        // Clear draft
+        localStorage.removeItem('insightLoop_draft');
+      }
 
       
       // Reset form

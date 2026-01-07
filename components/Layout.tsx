@@ -1,7 +1,7 @@
 import React from 'react';
 import { ViewType, Language, User } from '../types';
 import { translations } from '../i18n';
-import { Home, BookOpen, Sparkles, History, LogOut, Crown } from 'lucide-react';
+import { Home, BookOpen, Sparkles, History, LogOut, Crown, Gift } from 'lucide-react';
 
 interface LayoutProps {
   currentView: ViewType;
@@ -26,7 +26,7 @@ const Layout: React.FC<LayoutProps> = ({
 
   // ✅ 不依赖 i18n 新增字段，避免你还要去改 translations
   const unlockLabel = language === 'zh' ? '解锁体验' : 'Unlock';
-  const unlockTitle = language === 'zh' ? '解锁体验' : 'Unlock';
+  const memberSpaceLabel = language === 'zh' ? '会员空间' : 'Member Space';
 
   const NavItem = ({ view, icon: Icon, label }: { view: ViewType; icon: any; label: string }) => (
     <button
@@ -69,7 +69,10 @@ const Layout: React.FC<LayoutProps> = ({
                 <NavItem view="manifestation" icon={Sparkles} label={t.nav_manifestation} />
                 <NavItem view="history" icon={History} label={t.nav_history} />
 
-                {/* ✅ 新增：只加顶部导航栏 - 解锁体验（接到 Billing） */}
+                {/* ✅ 会员空间导航 */}
+                <NavItem view="member-space" icon={Gift} label={memberSpaceLabel} />
+
+                {/* ✅ 解锁体验（Billing） */}
                 <NavItem view="billing" icon={Crown} label={unlockLabel} />
               </nav>
 
@@ -121,6 +124,29 @@ const Layout: React.FC<LayoutProps> = ({
       {/* Footer */}
       <footer className="py-8 text-center text-stone-400 text-xs">
         <p className="font-serif italic">{t.footer_quote}</p>
+        
+        {/* ✅ 隐藏的管理员入口 - 点击 5 次可进入 */}
+        <p 
+          className="mt-4 cursor-default select-none"
+          onClick={(e) => {
+            // 使用 data attribute 计数点击
+            const target = e.currentTarget;
+            const clicks = parseInt(target.dataset.clicks || '0') + 1;
+            target.dataset.clicks = clicks.toString();
+            
+            if (clicks >= 5) {
+              setCurrentView('admin');
+              target.dataset.clicks = '0';
+            }
+            
+            // 3秒后重置计数
+            setTimeout(() => {
+              target.dataset.clicks = '0';
+            }, 3000);
+          }}
+        >
+          © 2026 InsightLoop
+        </p>
       </footer>
     </div>
   );

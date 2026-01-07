@@ -50,18 +50,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err: any) {
-    console.error('Webhook signature verification failed:', err.message);
+    console.error('❌ Webhook signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
+    console.log('📨 Webhook event:', event.type);
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.userId || session.client_reference_id;
 
         if (userId && session.customer) {
-          await supabase
+          const { error } = await supabase
             .from('profiles')
             .update({
               plan: 'pro',
@@ -71,7 +73,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             })
             .eq('id', userId);
 
-          console.log(`✅ User ${userId} upgraded to pro`);
+          if (error) {
+            console.error('❌ Supabase update failed:', error);
+          } else {
+            console.log(`✅ User ${userId} upgraded to pro`);
+          }
         }
         break;
       }
@@ -79,21 +85,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
         
-        await supabase
+        const { error } = await supabase
           .from('profiles')
           .update({
             subscription_status: subscription.status,
           })
           .eq('stripe_subscription_id', subscription.id);
 
-        console.log(`✅ Subscription ${subscription.id} updated: ${subscription.status}`);
+        if (error) {
+          console.error('❌ Supabase update failed:', error);
+        } else {
+          console.log(`✅ Subscription ${subscription.id} updated: ${subscription.status}`);
+        }
         break;
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         
-        await supabase
+        const { error } = await supabase
           .from('profiles')
           .update({
             plan: 'free',
@@ -101,17 +111,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           })
           .eq('stripe_subscription_id', subscription.id);
 
-        console.log(`✅ Subscription ${subscription.id} canceled`);
+        if (error) {
+          console.error('❌ Supabase update failed:', error);
+        } else {
+          console.log(`✅ Subscription ${subscription.id} canceled`);
+        }
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`ℹ️ Unhandled event type: ${event.type}`);
     }
 
     return res.json({ received: true });
   } catch (err: any) {
-    console.error('Webhook handler error:', err);
+    console.error('💥 Webhook handler error:', err);
     return res.status(500).json({ error: err.message });
   }
 }

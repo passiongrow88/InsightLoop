@@ -65,11 +65,14 @@ async function callGeminiAPI(payload: {
  * - DOES NOT change InsightLoop structure
  * - DOES NOT inject extra formatting
  * - ALL structure enforcement is handled by SYSTEM_INSTRUCTION
+ * 
+ * ✅ UPDATED: Now accepts userName parameter
  */
 export const generateJournalInsight = async (
   currentEntry: JournalEntry,
   history: JournalEntry[],
-  language: Language
+  language: Language,
+  userName?: string  // ✅ 新增：用户名字参数
 ): Promise<string> => {
   try {
     const historyContext = history
@@ -88,7 +91,12 @@ Dreams/Signs: ${h.angelNumbers || ""} ${h.dreams || ""}
     const uiContext =
       language === "zh" ? "UI Language: Chinese" : "UI Language: English";
 
+    // ✅ 新增：用户名字，如果没有则使用温暖的默认称呼
+    const displayName = userName?.trim() || (language === "zh" ? "朋友" : "Friend");
+
     const prompt = `
+USER_NAME: ${displayName}
+
 CONTEXT (User History):
 ${historyContext || "No prior records."}
 
@@ -104,11 +112,13 @@ Love: ${currentEntry.loveTarget || "None"}
 Apology: ${currentEntry.apologyTarget || "None"}
 
 INSTRUCTIONS:
-1. Analyze the language used in "CURRENT ENTRY". Respond in that MAIN language. (${uiContext} is for reference only).
-2. Use the "Gratitude" field to generate the "Energy Anchor" output.
-3. Analyze the "CONTEXT (User History)" against the "CURRENT ENTRY". Look for recurring emotional patterns, event structures, or self-talk themes.
-4. Use these findings to populate the "Patterns & Synchronicity" section.
-5. Follow the strict 7-block structure defined in the system instruction, but ensure the TONE is warm, specific, and companionable.
+1. Begin by greeting the user by their name (USER_NAME) and naturally introduce yourself as InsightLoop.
+2. Analyze the language used in "CURRENT ENTRY". Respond in that MAIN language. (${uiContext} is for reference only).
+3. Use the "Gratitude" field to generate the "Energy Anchor" output.
+4. Analyze the "CONTEXT (User History)" against the "CURRENT ENTRY". Look for recurring emotional patterns, event structures, or self-talk themes.
+5. Use these findings to populate the "Patterns & Synchronicity" section.
+6. Follow the 7-section structure defined in the system instruction, using ◈ markers and dynamic titles.
+7. Ensure the TONE is warm, specific, and companionable - like a handwritten letter, not a report.
 `;
 
     const text = await callGeminiAPI({
@@ -135,26 +145,37 @@ INSTRUCTIONS:
  * - Keeps tone gentle
  * - No success/failure narratives injected here
  * - System rules still live in SYSTEM_INSTRUCTION
+ * 
+ * ✅ UPDATED: Now accepts userName parameter
  */
 export const generateManifestationGuidance = async (
   goal: ManifestationItem,
   journalHistory: JournalEntry[],
-  language: Language
+  language: Language,
+  userName?: string  // ✅ 新增：用户名字参数
 ): Promise<string> => {
   try {
     const uiContext =
       language === "zh" ? "UI Language: Chinese" : "UI Language: English";
 
+    // ✅ 新增：用户名字
+    const displayName = userName?.trim() || (language === "zh" ? "朋友" : "Friend");
+
     const prompt = `
+USER_NAME: ${displayName}
+
 The user has set a new Manifestation Goal.
 Goal: ${goal.goal}
 Expected Date: ${goal.expectedDate}
 Reason: ${goal.reason || "Not specified"}
+Beneficiaries: ${goal.beneficiaries || "Not specified"}
 
 Instructions:
-1. Analyze the language of the "Goal". Respond in that same language. (${uiContext} is for reference only).
-2. Based on the user's journal history (briefly summarized below), provide a gentle, stabilizing message.
-3. Do not judge the goal. Focus on the mindset and the journey.
+1. Begin by greeting the user by their name (USER_NAME) and naturally introduce yourself as InsightLoop.
+2. Analyze the language of the "Goal". Respond in that same language. (${uiContext} is for reference only).
+3. Based on the user's journal history (briefly summarized below), provide a gentle, stabilizing message.
+4. Do not judge the goal. Focus on the mindset and the journey.
+5. Keep the response warm and personal, like a supportive friend.
 
 Recent History Context:
 ${

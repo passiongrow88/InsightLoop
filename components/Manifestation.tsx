@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ManifestationItem, JournalEntry, Language } from '../types';
+import { ManifestationItem, JournalEntry, Language, User } from '../types';
 import { generateManifestationGuidance } from '../services/geminiService';
 import { translations } from '../i18n';
 import { Loader2, Plus, CheckCircle2, Clock, Calendar, Sparkles, Send, Trash2, X, Check, HeartHandshake } from 'lucide-react';
@@ -11,9 +11,18 @@ interface ManifestationProps {
   onUpdateGoal: (goal: ManifestationItem) => void;
   onDeleteGoal: (id: string) => void;
   language: Language;
+  currentUser?: User | null;  // ✅ 新增：当前用户，用于获取名字
 }
 
-const Manifestation: React.FC<ManifestationProps> = ({ goals, journalHistory, onAddGoal, onUpdateGoal, onDeleteGoal, language }) => {
+const Manifestation: React.FC<ManifestationProps> = ({ 
+  goals, 
+  journalHistory, 
+  onAddGoal, 
+  onUpdateGoal, 
+  onDeleteGoal, 
+  language,
+  currentUser  // ✅ 新增
+}) => {
   const t = translations[language];
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -44,7 +53,9 @@ const Manifestation: React.FC<ManifestationProps> = ({ goals, journalHistory, on
     };
 
     try {
-      const guidance = await generateManifestationGuidance(newGoal, journalHistory, language);
+      // ✅ 修改：传入用户名字
+      const userName = currentUser?.name || '';
+      const guidance = await generateManifestationGuidance(newGoal, journalHistory, language, userName);
       onAddGoal({ ...newGoal, aiGuidance: guidance });
       setFormData({ goal: '', expectedDate: '', reason: '', beneficiaries: '' });
       setShowForm(false);
