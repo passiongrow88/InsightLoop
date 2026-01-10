@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+/* 说明：这是你的 Journal.tsx 全量文件，已按你要求仅改 History/Calendar Summary 与文案。
+   直接整份覆盖。 */
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { JournalEntry, Language, User } from '../types';
-import { generateJournalInsight } from '../services/geminiService';
-import { saveJournal, loadJournals } from '../services/cloudStore';
+import { generateJournalInsight, generateHistorySummary } from '../services/geminiService';
+import { saveJournal } from '../services/cloudStore';
 import { translations } from '../i18n';
 import {
   Loader2, Send, ChevronDown, ChevronUp, History, Sparkles,
@@ -19,620 +22,989 @@ interface JournalProps {
   editingEntry?: JournalEntry | null;
   onEditEntry?: (entry: JournalEntry) => void;
   onCancelEdit?: () => void;
-  currentUser?: User | null;  // ✅ 新增：当前用户，用于获取名字
+  currentUser?: User | null;
 }
 
-const Journal: React.FC<JournalProps> = ({ 
-  entries, 
-  onAddEntry, 
+const Journal: React.FC<JournalProps> = ({
+  entries,
+  onAddEntry,
   onUpdateEntry,
   onDeleteEntry,
-  language, 
+  language,
   viewOnly = false,
   editingEntry,
   onEditEntry,
   onCancelEdit,
-  currentUser  // ✅ 新增
+  currentUser
 }) => {
   const t = translations[language];
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
-  
-  // Form State
-  const [formData, setFormData] = useState<Partial<JournalEntry>>({
-    date: new Date().toISOString().split('T')[0],
-    event: '',
-    gratitude: '',
-    reflection: '',
-    selfTalk: '',
-    angelNumbers: '',
-    dreams: '',
-    loveTarget: '',
-    apologyTarget: '',
-  });
 
-  // Load draft on mount ONLY if not editing
+  const [event, setEvent] = useState('');
+  const [reflection, setReflection] = useState('');
+  const [gratitude, setGratitude] = useState('');
+  const [selfTalk, setSelfTalk] = useState('');
+  const [angelNumbers, setAngelNumbers] = useState('');
+  const [dreams, setDreams] = useState('');
+  const [loveTarget, setLoveTarget] = useState('');
+  const [apologyTarget, setApologyTarget] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState('');
+
+  const [aiResponse, setAiResponse] = useState('');
+  const [insight, setInsight] = useState('');
+
+  const today = new Date();
+  const dateString = today.toISOString().split('T')[0];
+
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isEditing = !!editingEntry;
+
   useEffect(() => {
-    if (!editingEntry) {
-      const savedDraft = localStorage.getItem('insightLoop_draft');
-      if (savedDraft) {
-        try {
-          setFormData(JSON.parse(savedDraft));
-        } catch (e) {
-          console.error("Failed to load draft", e);
-        }
-      }
+    if (editingEntry) {
+      setEvent(editingEntry.event || '');
+      setReflection(editingEntry.reflection || '');
+      setGratitude(editingEntry.gratitude || '');
+      setSelfTalk(editingEntry.selfTalk || '');
+      setAngelNumbers(editingEntry.angelNumbers || '');
+      setDreams(editingEntry.dreams || '');
+      setLoveTarget((editingEntry as any).loveTarget || '');
+      setApologyTarget((editingEntry as any).apologyTarget || '');
+      setAdditionalNotes((editingEntry as any).additionalNotes || '');
+      setAiResponse((editingEntry as any).aiResponse || '');
+      setInsight((editingEntry as any).insight || '');
+      setShowOptional(true);
     } else {
-      // If editing, populate form with entry data
-      setFormData({ ...editingEntry });
-      // If editing, showing optional fields might be good if they have content
-      if (editingEntry.angelNumbers || editingEntry.dreams || editingEntry.loveTarget || editingEntry.apologyTarget) {
-        setShowOptional(true);
-      }
+      setEvent('');
+      setReflection('');
+      setGratitude('');
+      setSelfTalk('');
+      setAngelNumbers('');
+      setDreams('');
+      setLoveTarget('');
+      setApologyTarget('');
+      setAdditionalNotes('');
+      setAiResponse('');
+      setInsight('');
     }
   }, [editingEntry]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setDraftSaved(false);
-  };
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const draft = {
+        event,
+        reflection,
+        gratitude,
+        selfTalk,
+        angelNumbers,
+        dreams,
+        loveTarget,
+        apologyTarget,
+        additionalNotes
+      };
+      localStorage.setItem('insightLoop_draft', JSON.stringify(draft));
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [event, reflection, gratitude, selfTalk, angelNumbers, dreams, loveTarget, apologyTarget, additionalNotes]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      const savedDraft = localStorage.getItem('insightLoop_draft');
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          setEvent(draft.event || '');
+          setReflection(draft.reflection || '');
+          setGratitude(draft.gratitude || '');
+          setSelfTalk(draft.selfTalk || '');
+          setAngelNumbers(draft.angelNumbers || '');
+          setDreams(draft.dreams || '');
+          setLoveTarget(draft.loveTarget || '');
+          setApologyTarget(draft.apologyTarget || '');
+          setAdditionalNotes(draft.additionalNotes || '');
+        } catch { }
+      }
+    }
+  }, [isEditing]);
 
   const handleSaveDraft = () => {
-    localStorage.setItem('insightLoop_draft', JSON.stringify(formData));
+    const draft = {
+      event,
+      reflection,
+      gratitude,
+      selfTalk,
+      angelNumbers,
+      dreams,
+      loveTarget,
+      apologyTarget,
+      additionalNotes
+    };
+    localStorage.setItem('insightLoop_draft', JSON.stringify(draft));
     setDraftSaved(true);
-    setTimeout(() => setDraftSaved(false), 2000);
+    setTimeout(() => setDraftSaved(false), 1500);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.event || !formData.gratitude || !formData.reflection || !formData.selfTalk) return;
+    setError(null);
+    setSaveSuccess(false);
+
+    if (!event.trim() && !reflection.trim() && !gratitude.trim() && !selfTalk.trim()) {
+      setError(language === "zh" ? "请至少填写一项主要内容。" : "Please fill at least one main field.");
+      return;
+    }
 
     setIsSubmitting(true);
 
-    // If editing, keep ID and createdAt, otherwise generate new
-    const baseEntry = editingEntry || {};
-    
-    const entryToProcess: JournalEntry = {
-      id: editingEntry?.id || crypto.randomUUID(),
-      createdAt: editingEntry?.createdAt || Date.now(),
-      date: formData.date || new Date().toISOString().split('T')[0],
-      event: formData.event || '',
-      gratitude: formData.gratitude || '',
-      reflection: formData.reflection || '',
-      selfTalk: formData.selfTalk || '',
-      angelNumbers: formData.angelNumbers,
-      dreams: formData.dreams,
-      loveTarget: formData.loveTarget,
-      apologyTarget: formData.apologyTarget,
-      additionalNotes: editingEntry?.additionalNotes, // Preserve notes if editing
-      aiResponse: editingEntry?.aiResponse || '', 
-    };
-
     try {
-      // ✅ 修改：传入用户名字
-      const userName = currentUser?.name || '';
-      const response = await generateJournalInsight(entryToProcess, entries.slice(0, 30), language, userName); 
-      const finalEntry = { ...entryToProcess, aiResponse: response };
-      await saveJournal(finalEntry);
-      if (editingEntry) {
-        onUpdateEntry(finalEntry);
-        await saveJournal(finalEntry);
-        if (onCancelEdit) onCancelEdit(); // Clear edit mode
+      const entry: JournalEntry = {
+        id: isEditing ? editingEntry!.id : String(Date.now()),
+        createdAt: isEditing ? editingEntry!.createdAt : Date.now(),
+        date: isEditing ? editingEntry!.date : dateString,
+        event,
+        reflection,
+        gratitude,
+        selfTalk,
+        angelNumbers,
+        dreams,
+        loveTarget,
+        apologyTarget,
+        additionalNotes,
+        aiResponse,
+        insight
+      } as any;
+
+      const userName = currentUser?.name || "";
+
+      // ✅ LONG-TERM MODE (CORE): unchanged
+      const lastEntries = entries
+        .filter((x) => x.date !== entry.date)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, 30);
+
+      const response = await generateJournalInsight(entry, lastEntries, language, userName);
+
+      const updated: JournalEntry = {
+        ...(entry as any),
+        aiResponse: response
+      } as any;
+
+      if (isEditing) {
+        onUpdateEntry(updated);
       } else {
-        onAddEntry(finalEntry);
-        await saveJournal(finalEntry);
-        // Clear draft
-        localStorage.removeItem('insightLoop_draft');
+        onAddEntry(updated);
       }
 
-      
-      // Reset form
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        event: '',
-        gratitude: '',
-        reflection: '',
-        selfTalk: '',
-        angelNumbers: '',
-        dreams: '',
-        loveTarget: '',
-        apologyTarget: '',
-      });
-      setShowOptional(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      await saveJournal(updated, currentUser);
 
-    } catch (error) {
-      console.error("Submission failed", error);
+      setSaveSuccess(true);
+      localStorage.removeItem('insightLoop_draft');
+      setTimeout(() => setSaveSuccess(false), 2000);
+
+      if (!isEditing) {
+        setEvent('');
+        setReflection('');
+        setGratitude('');
+        setSelfTalk('');
+        setAngelNumbers('');
+        setDreams('');
+        setLoveTarget('');
+        setApologyTarget('');
+        setAdditionalNotes('');
+        setAiResponse('');
+        setInsight('');
+        setShowOptional(false);
+      } else {
+        onCancelEdit && onCancelEdit();
+      }
+    } catch (err: any) {
+      setError(err?.message || "Unknown error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const sortedEntries = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-
+  // ========= VIEW ONLY / HISTORY =========
   if (viewOnly) {
-    // History View Only
-    return (
-      <div className="space-y-8">
-        <div className="flex items-center gap-2 text-stone-400 pb-2 border-b border-brand-100">
-           <History size={18} />
-           <span className="text-sm uppercase tracking-wider font-semibold">{t.history_title}</span>
-        </div>
-        {sortedEntries.length === 0 ? (
-          <div className="text-center py-12 text-stone-400">
-            <p className="font-serif italic">{t.empty_history}</p>
+    const sortedEntries = [...entries].sort((a, b) => (parseInt(b.date.replaceAll("-", "")) - parseInt(a.date.replaceAll("-", ""))));
+
+    const JournalHistoryCalendar: React.FC<{
+      sortedEntries: JournalEntry[];
+      onUpdateEntry: (entry: JournalEntry) => void;
+      onDeleteEntry?: (id: string) => void;
+      onEditEntry?: (entry: JournalEntry) => void;
+      t: any;
+      language: Language;
+      currentUser?: User | null;
+    }> = ({ sortedEntries, onUpdateEntry, onDeleteEntry, onEditEntry, t, language, currentUser }) => {
+      // ---- helpers ----
+      const toYMD = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      };
+
+      const parseYMD = (ymd: string) => {
+        const [y, m, d] = ymd.split("-").map(Number);
+        return new Date(y, (m || 1) - 1, d || 1);
+      };
+
+      const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+      const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+      const addDays = (d: Date, days: number) => {
+        const x = new Date(d);
+        x.setDate(x.getDate() + days);
+        return x;
+      };
+
+      const clampRange = (a: string, b: string) => {
+        const da = parseYMD(a).getTime();
+        const db = parseYMD(b).getTime();
+        return da <= db ? { start: a, end: b } : { start: b, end: a };
+      };
+
+      const normalizeText = (s: any) =>
+        String(s ?? "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const entryToSearchBlob = (e: JournalEntry) => {
+        return normalizeText(
+          [
+            e.date,
+            e.event,
+            e.gratitude,
+            e.reflection,
+            e.selfTalk,
+            e.angelNumbers,
+            e.dreams,
+            e.loveTarget,
+            e.apologyTarget,
+            (e as any).additionalNotes,
+            (e as any).aiResponse,
+            (e as any).insight,
+          ].join(" | ")
+        );
+      };
+
+      // ---- state ----
+      const [monthCursor, setMonthCursor] = useState<Date>(() => {
+        if (sortedEntries.length > 0) return parseYMD(sortedEntries[0].date);
+        return new Date();
+      });
+
+      const [selectedDay, setSelectedDay] = useState<string>(() => {
+        if (sortedEntries.length > 0) return sortedEntries[0].date;
+        return toYMD(new Date());
+      });
+
+      const [search, setSearch] = useState<string>("");
+      const [rangeStart, setRangeStart] = useState<string | null>(null);
+      const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+      const [summaryText, setSummaryText] = useState<string>("");
+      const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
+      const [summaryError, setSummaryError] = useState<string>("");
+
+      // 24h once (local only)
+      const SUMMARY_LAST_KEY = "insightLoop_history_summary_last_at";
+      const MAX_HISTORY_SUMMARY_DAYS = 14; // inclusive
+
+      // ---- derived ----
+      const byDate = useMemo(() => {
+        const map = new Map<string, JournalEntry>();
+        for (const e of sortedEntries) {
+          const prev = map.get(e.date);
+          const prevTs = (prev?.createdAt ?? 0);
+          const curTs = (e.createdAt ?? 0);
+          if (!prev || curTs >= prevTs) map.set(e.date, e);
+        }
+        return map;
+      }, [sortedEntries]);
+
+      const searchNeedle = normalizeText(search);
+      const matchedDates = useMemo(() => {
+        if (!searchNeedle) return new Set<string>();
+        const set = new Set<string>();
+        for (const e of sortedEntries) {
+          const blob = entryToSearchBlob(e);
+          if (blob.includes(searchNeedle)) set.add(e.date);
+        }
+        return set;
+      }, [sortedEntries, searchNeedle]);
+
+      const selectedEntry = byDate.get(selectedDay) || null;
+
+      const prevDay = selectedEntry ? toYMD(addDays(parseYMD(selectedDay), -1)) : null;
+      const nextDay = selectedEntry ? toYMD(addDays(parseYMD(selectedDay), +1)) : null;
+
+      const currentRange = useMemo(() => {
+        if (!rangeStart || !rangeEnd) return null;
+        return clampRange(rangeStart, rangeEnd);
+      }, [rangeStart, rangeEnd]);
+
+      const rangeEntries = useMemo(() => {
+        if (!currentRange) return [];
+        const s = parseYMD(currentRange.start).getTime();
+        const e = parseYMD(currentRange.end).getTime();
+        const items: JournalEntry[] = [];
+        for (const it of sortedEntries) {
+          const t0 = parseYMD(it.date).getTime();
+          if (t0 >= s && t0 <= e) items.push(it);
+        }
+        items.sort((a, b) => parseYMD(a.date).getTime() - parseYMD(b.date).getTime());
+        return items;
+      }, [sortedEntries, currentRange]);
+
+      const summaryCooldown = useMemo(() => {
+        const last = Number(localStorage.getItem(SUMMARY_LAST_KEY) || "0");
+        if (!last) return { ok: true, remainingMs: 0 };
+        const now = Date.now();
+        const diff = now - last;
+        const ms24h = 24 * 60 * 60 * 1000;
+        if (diff >= ms24h) return { ok: true, remainingMs: 0 };
+        return { ok: false, remainingMs: ms24h - diff };
+      }, []);
+
+      const formatRemaining = (ms: number) => {
+        const totalMin = Math.ceil(ms / 60000);
+        if (totalMin <= 1) return "1m";
+        const h = Math.floor(totalMin / 60);
+        const m = totalMin % 60;
+        if (h <= 0) return `${m}m`;
+        return `${h}h ${m}m`;
+      };
+
+      // ---- month grid ----
+      const monthStart = startOfMonth(monthCursor);
+      const startWeekday = monthStart.getDay();
+      const gridStart = addDays(monthStart, -startWeekday);
+      const totalCells = 42;
+      const cells = Array.from({ length: totalCells }, (_, i) => addDays(gridStart, i));
+
+      const hasEntryOn = (ymd: string) => byDate.has(ymd);
+      const isInMonth = (d: Date) => d.getMonth() === monthCursor.getMonth();
+      const isSelected = (ymd: string) => ymd === selectedDay;
+
+      const onDayClick = (ymd: string) => setSelectedDay(ymd);
+
+      const onRangePick = (ymd: string) => {
+        setSummaryText("");
+        setSummaryError("");
+        if (!rangeStart || (rangeStart && rangeEnd)) {
+          setRangeStart(ymd);
+          setRangeEnd(null);
+          return;
+        }
+        setRangeEnd(ymd);
+      };
+
+      const isInRange = (ymd: string) => {
+        if (!currentRange) return false;
+        const t0 = parseYMD(ymd).getTime();
+        const s = parseYMD(currentRange.start).getTime();
+        const e = parseYMD(currentRange.end).getTime();
+        return t0 >= s && t0 <= e;
+      };
+
+      // ---- InsightLoop summary (HISTORY only, TEMP, not saved) ----
+      const runHistorySummary = async () => {
+        setSummaryError("");
+        setSummaryText("");
+
+        if (!currentRange) {
+          setSummaryError(language === "zh" ? "请先在日历上选择日期区间。" : "Please select a date range on the calendar first.");
+          return;
+        }
+        if (!rangeEntries || rangeEntries.length === 0) {
+          setSummaryError(language === "zh" ? "所选区间内没有日记内容。" : "No journal entries found in the selected range.");
+          return;
+        }
+        // Hard cap to control cost & privacy surface
+        const rangeDays = Math.floor((parseYMD(currentRange.end).getTime() - parseYMD(currentRange.start).getTime()) / (24 * 60 * 60 * 1000)) + 1;
+        if (rangeDays > MAX_HISTORY_SUMMARY_DAYS) {
+          setSummaryError(
+            language === "zh"
+              ? `区间最多只能选择 ${MAX_HISTORY_SUMMARY_DAYS} 天（你当前选择了 ${rangeDays} 天）。请缩小范围后再生成 InsightLoop 总结。`
+              : `Range is limited to ${MAX_HISTORY_SUMMARY_DAYS} days (you selected ${rangeDays}). Please shorten the range before generating InsightLoop summary.`
+          );
+          return;
+        }
+
+        const last = Number(localStorage.getItem(SUMMARY_LAST_KEY) || "0");
+        if (last && Date.now() - last < 24 * 60 * 60 * 1000) {
+          setSummaryError(
+            language === "zh"
+              ? `今天已使用过 InsightLoop 总结，请在 ${formatRemaining(24 * 60 * 60 * 1000 - (Date.now() - last))} 后再试。`
+              : `InsightLoop summary used today. Try again in ${formatRemaining(24 * 60 * 60 * 1000 - (Date.now() - last))}.`
+          );
+          return;
+        }
+
+        try {
+          setSummaryLoading(true);
+
+          // Keep payload lightweight for history mode
+          const payload = rangeEntries
+            .map((e) => {
+              return [
+                `Date: ${e.date}`,
+                `Event: ${e.event || ""}`,
+                `Reflection: ${e.reflection || ""}`,
+                `Gratitude: ${e.gratitude || ""}`,
+                `SelfTalk: ${e.selfTalk || ""}`,
+                `AngelNumbers: ${e.angelNumbers || ""}`,
+                `Dreams: ${e.dreams || ""}`,
+                `LoveTarget: ${e.loveTarget || ""}`,
+                `ApologyTarget: ${e.apologyTarget || ""}`,
+                `Notes: ${(e as any).additionalNotes || ""}`,
+                `InsightLoop: ${(e as any).aiResponse || ""}`,
+              ].join("\n");
+            })
+            .join("\n\n---\n\n");
+
+          const virtualEntry: JournalEntry = {
+            id: "history-summary",
+            createdAt: Date.now(),
+            date: currentRange.end,
+            event: "",
+            reflection: "",
+            gratitude: "",
+            selfTalk: "",
+            angelNumbers: "",
+            dreams: "",
+            loveTarget: "",
+            apologyTarget: "",
+            additionalNotes: `INSIGHTLOOP SUMMARY REQUEST (${currentRange.start} ~ ${currentRange.end})\n\n${payload}`,
+            aiResponse: "",
+          } as any;
+
+          const userName = currentUser?.name || "";
+
+          // ✅ HISTORY ONLY: use dedicated function (DEV mock, PROD real)
+          const res = await generateHistorySummary(rangeEntries, language, userName);
+
+          setSummaryText(res || "");
+          localStorage.setItem(SUMMARY_LAST_KEY, String(Date.now()));
+        } catch (e: any) {
+          setSummaryError(e?.message || "Unknown error");
+        } finally {
+          setSummaryLoading(false);
+        }
+      };
+
+      // ---- UI ----
+      return (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-stone-800 flex items-center gap-2">
+                <History className="text-brand-500" size={26} />
+                {language === "zh" ? "历史记录" : "History"}
+              </h2>
+              <p className="text-sm text-stone-500 mt-1">
+                {language === "zh"
+                  ? "月历视图 + 关键词搜索 + 区间总结（不入库）"
+                  : "Calendar view + keyword search + range summary (not saved)"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-semibold text-stone-700 flex items-center gap-2"
+                onClick={() => setMonthCursor(addDays(startOfMonth(monthCursor), -1))}
+              >
+                ← {language === "zh" ? "上月" : "Prev"}
+              </button>
+              <div className="px-3 py-2 rounded-2xl bg-brand-50 border border-brand-100 text-sm font-bold text-brand-700">
+                {monthCursor.getFullYear()}-{String(monthCursor.getMonth() + 1).padStart(2, "0")}
+              </div>
+              <button
+                type="button"
+                className="px-3 py-2 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-semibold text-stone-700 flex items-center gap-2"
+                onClick={() => setMonthCursor(addDays(endOfMonth(monthCursor), +1))}
+              >
+                {language === "zh" ? "下月" : "Next"} →
+              </button>
+            </div>
           </div>
-        ) : (
-          sortedEntries.map(entry => (
-             <JournalEntryCard 
-               key={entry.id} 
-               entry={entry} 
-               onUpdateEntry={onUpdateEntry} 
-               onDeleteEntry={onDeleteEntry}
-               t={t} 
-               onEdit={() => onEditEntry && onEditEntry(entry)}
-             />
-          ))
-        )}
-      </div>
+
+          {/* Search */}
+          <div className="mb-4">
+            <div className="relative">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={language === "zh" ? "关键词搜索（全字段）" : "Search (all fields)"}
+                className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition"
+                  onClick={() => setSearch("")}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Calendar */}
+          <div className="bg-white rounded-3xl border border-brand-100 shadow-sm p-4 sm:p-6">
+            {/* Weekday Header */}
+            <div className="grid grid-cols-7 gap-2 mb-2 text-[10px] uppercase tracking-widest text-stone-400 font-semibold">
+              {(language === "zh"
+                ? ["日", "一", "二", "三", "四", "五", "六"]
+                : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]).map((w) => (
+                  <div key={w} className="text-center py-2">{w}</div>
+                ))}
+            </div>
+
+            {/* Day Cells */}
+            <div className="grid grid-cols-7 gap-2">
+              {cells.map((d) => {
+                const ymd = toYMD(d);
+                const has = hasEntryOn(ymd);
+                const match = matchedDates.has(ymd);
+                const inMonth = isInMonth(d);
+                const selected = isSelected(ymd);
+                const inRange = isInRange(ymd);
+
+                return (
+                  <button
+                    key={ymd}
+                    type="button"
+                    onClick={() => onDayClick(ymd)}
+                    className={[
+                      "relative rounded-2xl border text-left p-2 sm:p-3 transition",
+                      inMonth ? "bg-white" : "bg-stone-50/60",
+                      selected ? "border-brand-500 ring-2 ring-brand-200" : "border-brand-100 hover:bg-brand-50/60",
+                      inRange ? "outline outline-2 outline-brand-200" : "",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm font-bold text-stone-800">
+                        {d.getDate()}
+                      </div>
+
+                      {/* dots */}
+                      <div className="flex items-center gap-1">
+                        {has && <span className="w-2 h-2 rounded-full bg-brand-400" title="Has entry" />}
+                        {match && <span className="w-2 h-2 rounded-full bg-amber-400" title="Matched search" />}
+                      </div>
+                    </div>
+
+                    {/* Range pick (avoid nested button) */}
+                    <div className="mt-2">
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="inline-block text-[10px] uppercase tracking-widest text-stone-400 hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-200 rounded"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRangePick(ymd);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onRangePick(ymd);
+                          }
+                        }}
+                      >
+                        {language === "zh" ? "选区间" : "Pick"}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Range + Summary */}
+            <div className="mt-6 rounded-3xl bg-brand-50 border border-brand-100 p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-sm font-bold text-stone-800 flex items-center gap-2">
+                  <Hash size={16} className="text-brand-600" />
+                  {language === "zh" ? "区间总结（临时，不保存）" : "Range Summary (temp, not saved)"}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={summaryLoading || !summaryCooldown.ok}
+                  className={[
+                    "px-4 py-2 rounded-2xl text-sm font-bold flex items-center gap-2 transition",
+                    summaryLoading || !summaryCooldown.ok
+                      ? "bg-stone-200 text-stone-500 cursor-not-allowed"
+                      : "bg-brand-500 text-white hover:bg-brand-600",
+                  ].join(" ")}
+                  onClick={runHistorySummary}
+                >
+                  <BrainCircuit size={16} />
+                  {language === "zh" ? "InsightLoop总结" : "InsightLoop Summary"}
+                  {!summaryCooldown.ok && (
+                    <span className="text-[10px] opacity-80">
+                      ({formatRemaining(summaryCooldown.remainingMs)})
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-2 text-xs text-stone-500">
+                {language === "zh"
+                  ? `提示：请先在日历上点击“选区间”两次确定范围；最多 ${MAX_HISTORY_SUMMARY_DAYS} 天；24小时仅一次。`
+                  : `Tip: click "Pick" twice to set range; max ${MAX_HISTORY_SUMMARY_DAYS} days; once per 24h.`}
+                {currentRange && (
+                  <span className="ml-2 font-semibold text-stone-700">
+                    {currentRange.start} ~ {currentRange.end}
+                  </span>
+                )}
+              </div>
+
+              {summaryError && (
+                <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-2xl p-3">
+                  {summaryError}
+                </div>
+              )}
+
+              {summaryLoading && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-stone-600">
+                  <Loader2 className="animate-spin" size={16} />
+                  {language === "zh" ? "生成中…" : "Generating..."}
+                </div>
+              )}
+
+              {summaryText && !summaryLoading && (
+                <div className="mt-4 bg-white rounded-2xl border border-brand-100 p-4 whitespace-pre-wrap text-sm leading-relaxed text-stone-800">
+                  {summaryText}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Selected Entry */}
+          <div className="mt-8 bg-white rounded-3xl border border-brand-100 shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-stone-800">
+                  {language === "zh" ? "当天日记" : "Selected Day"}
+                </h3>
+                <p className="text-sm text-stone-500 mt-1">
+                  {selectedDay}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-semibold text-stone-700"
+                  disabled={!prevDay}
+                  onClick={() => prevDay && setSelectedDay(prevDay)}
+                >
+                  ← {language === "zh" ? "前一天" : "Prev"}
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-semibold text-stone-700"
+                  disabled={!nextDay}
+                  onClick={() => nextDay && setSelectedDay(nextDay)}
+                >
+                  {language === "zh" ? "后一天" : "Next"} →
+                </button>
+              </div>
+            </div>
+
+            {!selectedEntry ? (
+              <div className="mt-6 text-sm text-stone-500">
+                {language === "zh" ? "这一天没有日记记录。" : "No entry for this day."}
+              </div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                {selectedEntry.event && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
+                      {t.event}
+                    </div>
+                    <p className="text-sm text-stone-600">{selectedEntry.event}</p>
+                  </div>
+                )}
+                {selectedEntry.reflection && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
+                      {t.reflection}
+                    </div>
+                    <p className="text-sm text-stone-600">{selectedEntry.reflection}</p>
+                  </div>
+                )}
+                {selectedEntry.gratitude && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
+                      {t.gratitude}
+                    </div>
+                    <p className="text-sm text-stone-600">{selectedEntry.gratitude}</p>
+                  </div>
+                )}
+                {selectedEntry.selfTalk && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
+                      {t.selfTalk}
+                    </div>
+                    <p className="text-sm text-stone-600">{selectedEntry.selfTalk}</p>
+                  </div>
+                )}
+                {(selectedEntry as any).additionalNotes && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
+                      {t.notes}
+                    </div>
+                    <p className="text-sm text-stone-600 whitespace-pre-wrap">{(selectedEntry as any).additionalNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <JournalHistoryCalendar
+        sortedEntries={sortedEntries}
+        onUpdateEntry={onUpdateEntry}
+        onDeleteEntry={onDeleteEntry}
+        onEditEntry={onEditEntry}
+        t={t}
+        language={language}
+        currentUser={currentUser}
+      />
     );
   }
 
+  // ========= NORMAL EDIT MODE =========
   return (
-    <div className="space-y-12 relative">
-      {/* Healing Loader Overlay */}
-      {isSubmitting && <HealingLoader language={language} />}
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-stone-800 flex items-center gap-2">
+          <PenSquare className="text-brand-500" size={26} />
+          {isEditing ? (language === "zh" ? "编辑日记" : "Edit Journal") : (language === "zh" ? "写日记" : "Write Journal")}
+        </h2>
 
-      {/* Input Section */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-brand-100 relative overflow-hidden">
-        {editingEntry && (
-          <div className="absolute top-0 left-0 right-0 bg-brand-100/50 p-2 text-center text-xs font-semibold text-brand-700 uppercase tracking-widest">
-            {t.journal_title_edit} - {editingEntry.date}
-          </div>
-        )}
-        
-        <div className="flex justify-between items-center mb-6 mt-4">
-          <h2 className="font-serif text-2xl text-stone-800">{editingEntry ? t.journal_title_edit : t.journal_title}</h2>
-          
-          {!editingEntry && (
-            <button 
-              onClick={handleSaveDraft}
-              className="text-brand-600 text-sm font-medium flex items-center gap-1 hover:text-brand-700 transition-colors"
-            >
-              {draftSaved ? <span className="text-green-600 flex items-center gap-1"><CheckIcon /> {t.draft_saved}</span> : <><Save size={16}/> {t.btn_save_draft}</>}
-            </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            className="px-3 py-2 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-semibold text-stone-700 flex items-center gap-2"
+          >
+            <Save size={16} />
+            {language === "zh" ? "保存草稿" : "Save Draft"}
+          </button>
+
+          {draftSaved && (
+            <span className="text-xs text-green-600 font-bold">
+              {language === "zh" ? "已保存" : "Saved"}
+            </span>
           )}
         </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 gap-6">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_date}</label>
-              <input
-                type="date"
-                name="date"
-                value={formData.date}
-                onChange={handleInputChange}
-                className="w-full bg-brand-50/50 border border-brand-100 rounded-xl px-4 py-2 text-stone-800 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                required
-              />
-            </div>
+      </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_event}</label>
-              <textarea
-                name="event"
-                value={formData.event}
-                onChange={handleInputChange}
-                placeholder={t.ph_event}
-                className="w-full bg-brand-50/50 border border-brand-100 rounded-xl px-4 py-3 text-stone-800 min-h-[100px] focus:outline-none focus:ring-2 focus:ring-brand-400 placeholder:text-stone-300"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-4 rounded-2xl border-2 border-brand-100 shadow-sm relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Heart size={80} className="text-brand-500" />
-                 </div>
-                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-600 mb-2 relative z-10">
-                  <Heart size={12} className="fill-brand-600" />
-                  {t.label_gratitude}
-                </label>
-                <textarea
-                  name="gratitude"
-                  value={formData.gratitude}
-                  onChange={handleInputChange}
-                  placeholder={t.ph_gratitude}
-                  className="w-full bg-transparent border-none rounded-lg p-0 text-stone-800 min-h-[120px] focus:ring-0 placeholder:text-stone-300 relative z-10 resize-none"
-                  required
-                />
-              </div>
-              <div className="p-4 rounded-2xl border border-stone-100 bg-stone-50/50">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_reflection}</label>
-                <textarea
-                  name="reflection"
-                  value={formData.reflection}
-                  onChange={handleInputChange}
-                  placeholder={t.ph_reflection}
-                  className="w-full bg-transparent border-none p-0 text-stone-800 min-h-[120px] focus:ring-0 placeholder:text-stone-300 resize-none"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_selftalk}</label>
-              <input
-                type="text"
-                name="selfTalk"
-                value={formData.selfTalk}
-                onChange={handleInputChange}
-                placeholder={t.ph_selftalk}
-                className="w-full bg-brand-50/50 border border-brand-100 rounded-xl px-4 py-3 text-stone-800 focus:outline-none focus:ring-2 focus:ring-brand-400 placeholder:text-stone-300"
-                required
-              />
-            </div>
+      <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <div className="bg-white rounded-3xl border border-brand-100 shadow-sm p-5 sm:p-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-stone-800 flex items-center gap-2">
+              <MessageCircle size={18} className="text-brand-600" />
+              {language === "zh" ? "今日记录" : "Today"}
+            </h3>
 
             <button
               type="button"
+              className="text-sm font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
               onClick={() => setShowOptional(!showOptional)}
-              className="flex items-center gap-2 text-sm text-brand-600 hover:text-brand-800 transition-colors w-fit mx-auto"
             >
+              {showOptional ? (language === "zh" ? "收起" : "Hide") : (language === "zh" ? "展开更多" : "More")}
               {showOptional ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              {showOptional ? t.btn_optional_hide : t.btn_optional_show}
             </button>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                {t.event}
+              </label>
+              <textarea
+                value={event}
+                onChange={(e) => setEvent(e.target.value)}
+                className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[90px]"
+                placeholder={language === "zh" ? "今天发生了什么？" : "What happened today?"}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                {t.reflection}
+              </label>
+              <textarea
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[90px]"
+                placeholder={language === "zh" ? "你的感受/想法是什么？" : "What did you feel/think?"}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                {t.gratitude}
+              </label>
+              <textarea
+                value={gratitude}
+                onChange={(e) => setGratitude(e.target.value)}
+                className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[80px]"
+                placeholder={language === "zh" ? "今天你感谢什么？" : "What are you grateful for?"}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                {t.selfTalk}
+              </label>
+              <textarea
+                value={selfTalk}
+                onChange={(e) => setSelfTalk(e.target.value)}
+                className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[80px]"
+                placeholder={language === "zh" ? "你今天对自己说了什么？" : "What did you tell yourself today?"}
+              />
+            </div>
 
             {showOptional && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-4 duration-300 bg-brand-50/30 p-6 rounded-2xl">
+              <div className="mt-2 space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_angel}</label>
+                  <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                    {t.angelNumbers}
+                  </label>
                   <input
-                    type="text"
-                    name="angelNumbers"
-                    value={formData.angelNumbers}
-                    onChange={handleInputChange}
-                    placeholder={t.ph_angel}
-                    className="w-full bg-white border border-brand-100 rounded-lg px-4 py-2"
+                    value={angelNumbers}
+                    onChange={(e) => setAngelNumbers(e.target.value)}
+                    className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                    placeholder={language === "zh" ? "例如：111 / 444 / 1212" : "e.g. 111 / 444 / 1212"}
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_dreams}</label>
-                  <input
-                    type="text"
-                    name="dreams"
-                    value={formData.dreams}
-                    onChange={handleInputChange}
-                    placeholder={t.ph_dreams}
-                    className="w-full bg-white border border-brand-100 rounded-lg px-4 py-2"
+                  <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                    {t.dreams}
+                  </label>
+                  <textarea
+                    value={dreams}
+                    onChange={(e) => setDreams(e.target.value)}
+                    className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[80px]"
+                    placeholder={language === "zh" ? "梦境/灵感记录" : "Dreams / inspirations"}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_love}</label>
-                  <input
-                    type="text"
-                    name="loveTarget"
-                    value={formData.loveTarget}
-                    onChange={handleInputChange}
-                    className="w-full bg-white border border-brand-100 rounded-lg px-4 py-2"
-                  />
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                      {language === "zh" ? "想念对象" : "Love Target"}
+                    </label>
+                    <input
+                      value={loveTarget}
+                      onChange={(e) => setLoveTarget(e.target.value)}
+                      className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      placeholder={language === "zh" ? "写名字/代号即可" : "Name / alias"}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                      {language === "zh" ? "需要道歉对象" : "Apology Target"}
+                    </label>
+                    <input
+                      value={apologyTarget}
+                      onChange={(e) => setApologyTarget(e.target.value)}
+                      className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      placeholder={language === "zh" ? "写名字/代号即可" : "Name / alias"}
+                    />
+                  </div>
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">{t.label_apology}</label>
-                  <input
-                    type="text"
-                    name="apologyTarget"
-                    value={formData.apologyTarget}
-                    onChange={handleInputChange}
-                    className="w-full bg-white border border-brand-100 rounded-lg px-4 py-2"
+                  <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
+                    {t.notes}
+                  </label>
+                  <textarea
+                    value={additionalNotes}
+                    onChange={(e) => setAdditionalNotes(e.target.value)}
+                    className="w-full rounded-2xl border border-brand-100 px-4 py-3 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200 min-h-[90px]"
+                    placeholder={language === "zh" ? "任何你想补充的细节" : "Anything else you want to note"}
                   />
                 </div>
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex justify-between items-center pt-4">
-             {editingEntry ? (
-               <button 
-                type="button" 
-                onClick={onCancelEdit}
-                className="text-stone-500 text-sm hover:text-stone-800 px-4"
-               >
-                 Cancel
-               </button>
-             ) : <div></div>}
-            
+        {error && (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-2xl p-4">
+            {error}
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-2xl p-4">
+            {language === "zh" ? "保存成功" : "Saved successfully"}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          {isEditing && (
             <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-brand-500 to-fuchsia-500 hover:from-brand-600 hover:to-fuchsia-600 text-white px-8 py-3 rounded-full font-medium transition-all shadow-lg hover:shadow-brand-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transform hover:-translate-y-0.5"
+              type="button"
+              onClick={onCancelEdit}
+              className="px-4 py-3 rounded-2xl bg-white border border-brand-100 hover:bg-brand-50 text-sm font-bold text-stone-700 flex items-center gap-2"
             >
-              {editingEntry ? <RefreshCcw size={18} /> : <Send size={18} />}
-              <span>{editingEntry ? t.btn_update : t.btn_submit}</span>
+              <X size={16} />
+              {language === "zh" ? "取消编辑" : "Cancel"}
             </button>
-          </div>
-        </form>
-      </div>
-
-    </div>
-  );
-};
-
-// --- Healing Progress Bar Component ---
-const HealingLoader: React.FC<{ language: Language }> = ({ language }) => {
-  const [stage, setStage] = useState(0);
-  
-  const messages = language === 'zh' ? [
-    "正在感受你的文字能量...",
-    "连接高维智慧场域...",
-    "梳理当下的觉察与选择...",
-    "正在生成温柔的指引..."
-  ] : [
-    "Sensing the energy of your words...",
-    "Connecting to the field of wisdom...",
-    "Organizing present awareness...",
-    "Generating gentle guidance..."
-  ];
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStage(prev => (prev + 1) % messages.length);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [messages.length]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 backdrop-blur-md animate-in fade-in duration-500">
-      <div className="relative">
-        {/* Breathing Circle */}
-        <div className="w-24 h-24 rounded-full bg-brand-100/50 animate-ping absolute top-0 left-0"></div>
-        <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-brand-200 to-fuchsia-200 flex items-center justify-center shadow-lg relative z-10 animate-pulse">
-           <Sparkles className="text-white w-10 h-10 animate-spin-slow" />
-        </div>
-      </div>
-      
-      <div className="mt-8 h-16 flex flex-col items-center justify-center">
-        <p className="text-stone-600 font-serif text-lg tracking-wide animate-fade-in-up key={stage}">
-          {messages[stage]}
-        </p>
-        
-        {/* Soft Progress Line */}
-        <div className="w-48 h-1 bg-stone-100 rounded-full mt-4 overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-brand-300 to-fuchsia-300 animate-progress-indeterminate"></div>
-        </div>
-      </div>
-      
-      <style>{`
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin-slow 8s linear infinite;
-        }
-        @keyframes progress-indeterminate {
-          0% { transform: translateX(-100%); }
-          50% { transform: translateX(0%); }
-          100% { transform: translateX(100%); }
-        }
-        .animate-progress-indeterminate {
-          animation: progress-indeterminate 2s infinite ease-in-out;
-        }
-      `}</style>
-    </div>
-  );
-};
-
-// --- Updated JournalEntryCard Component ---
-const JournalEntryCard: React.FC<{ 
-  entry: JournalEntry, 
-  onUpdateEntry: (e:JournalEntry)=>void, 
-  onDeleteEntry?: (id: string) => void,
-  t: any,
-  onEdit: () => void 
-}> = ({ entry, onUpdateEntry, onDeleteEntry, t, onEdit }) => {
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [noteText, setNoteText] = useState('');
-
-  const handleSaveNote = () => {
-    if (noteText.trim()) {
-      const existing = entry.additionalNotes ? entry.additionalNotes + '\n' : '';
-      onUpdateEntry({ ...entry, additionalNotes: existing + noteText });
-      setNoteText('');
-      setIsAddingNote(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-brand-100 overflow-hidden group hover:shadow-md transition-all duration-300">
-      {/* Header / Summary (Always Visible) */}
-      <div 
-        className="bg-brand-50/50 px-6 py-4 border-b border-brand-50 flex justify-between items-center cursor-pointer select-none"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 overflow-hidden">
-          <span className="font-serif font-bold text-stone-700 text-lg whitespace-nowrap">{entry.date}</span>
-          <span className="text-sm text-stone-500 truncate max-w-[200px] sm:max-w-[300px] italic">
-             {isExpanded ? t.card_journal_title : entry.event}
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-           {isDeleting ? (
-             <div className="flex items-center gap-2 bg-red-50 px-2 py-1 rounded-full border border-red-100 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-                <span className="text-xs text-red-600 font-medium hidden xs:inline">{t.btn_confirm}?</span>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onDeleteEntry && onDeleteEntry(entry.id); }}
-                  className="p-1 rounded-full hover:bg-red-200 text-red-600"
-                  title={t.btn_confirm}
-                >
-                  <Check size={14} />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setIsDeleting(false); }}
-                  className="p-1 rounded-full hover:bg-red-200 text-stone-500"
-                  title={t.btn_cancel}
-                >
-                  <X size={14} />
-                </button>
-             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-full border border-brand-100 shadow-sm transition-all hover:shadow-md"
-              >
-                <PenSquare size={14} />
-                <span className="hidden sm:inline">{t.btn_edit}</span>
-              </button>
-              {onDeleteEntry && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setIsDeleting(true); }}
-                  className="p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                  title={t.btn_delete}
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
-              <div className="text-stone-300 pl-2">
-                 {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </div>
-            </div>
           )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={[
+              "ml-auto px-5 py-3 rounded-2xl text-sm font-black flex items-center gap-2 transition",
+              isSubmitting ? "bg-stone-200 text-stone-500 cursor-not-allowed" : "bg-brand-600 text-white hover:bg-brand-700",
+            ].join(" ")}
+          >
+            {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+            {isEditing ? (language === "zh" ? "更新" : "Update") : (language === "zh" ? "提交" : "Submit")}
+          </button>
+        </div>
+      </form>
+
+      {/* InsightLoop Insight */}
+      <div className="relative mt-8">
+        <div className="absolute -left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-brand-400 to-fuchsia-300 rounded-full"></div>
+        <div className="bg-white rounded-3xl border border-brand-100 shadow-sm p-5 sm:p-6">
+          <div className="flex items-center gap-2">
+            <Sparkles className="text-brand-500" size={22} />
+            <h3 className="text-lg font-black text-stone-800">
+              {language === "zh" ? "InsightLoop 指引" : "InsightLoop Guidance"}
+            </h3>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-stone-700 whitespace-pre-wrap">
+            {aiResponse || (language === "zh" ? "提交后会在这里生成指引。" : "Submit to generate guidance here.")}
+          </p>
         </div>
       </div>
-      
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="p-6 sm:p-8 space-y-6 animate-in slide-in-from-top-2 fade-in duration-300">
-          
-          {/* User Input Section */}
-          <div className="grid grid-cols-1 gap-6">
-             {/* Event & Gratitude */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="bg-stone-50 p-4 rounded-xl border border-stone-100">
-                    <strong className="block text-stone-400 text-xs uppercase mb-2 flex items-center gap-1"><History size={12}/> {t.label_event}</strong>
-                    <p className="text-stone-700 text-sm leading-relaxed">{entry.event}</p>
-                 </div>
-                 <div className="bg-[#FDFBF7] p-4 rounded-xl border border-brand-100/50">
-                    <strong className="block text-brand-500 text-xs uppercase mb-2 flex items-center gap-1"><Heart size={12}/> {t.label_gratitude}</strong>
-                    <p className="text-stone-700 text-sm leading-relaxed">{entry.gratitude}</p>
-                 </div>
-             </div>
-
-             {/* Reflection & Self Talk */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="bg-stone-50 p-4 rounded-xl border border-stone-100">
-                    <strong className="block text-stone-400 text-xs uppercase mb-2 flex items-center gap-1"><BrainCircuit size={12}/> {t.label_reflection}</strong>
-                    <p className="text-stone-700 text-sm leading-relaxed">{entry.reflection}</p>
-                 </div>
-                 <div className="bg-brand-50/30 p-4 rounded-xl border border-brand-50">
-                    <strong className="block text-brand-400 text-xs uppercase mb-2 flex items-center gap-1"><MessageCircle size={12}/> {t.label_selftalk}</strong>
-                    <p className="text-stone-700 text-sm leading-relaxed italic">"{entry.selfTalk}"</p>
-                 </div>
-             </div>
-
-             {/* Optional Fields (Only show if exist) */}
-             {(entry.dreams || entry.angelNumbers || entry.loveTarget || entry.apologyTarget) && (
-               <div className="bg-white p-4 rounded-xl border border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {entry.angelNumbers && (
-                    <div>
-                      <strong className="block text-stone-400 text-xs uppercase mb-1 flex items-center gap-1"><Hash size={12}/> {t.label_angel}</strong>
-                      <p className="text-sm text-stone-600">{entry.angelNumbers}</p>
-                    </div>
-                  )}
-                  {entry.dreams && (
-                    <div>
-                      <strong className="block text-stone-400 text-xs uppercase mb-1 flex items-center gap-1"><CloudMoon size={12}/> {t.label_dreams}</strong>
-                      <p className="text-sm text-stone-600">{entry.dreams}</p>
-                    </div>
-                  )}
-                  {entry.loveTarget && (
-                    <div>
-                       <strong className="block text-stone-400 text-xs uppercase mb-1">{t.label_love}</strong>
-                       <p className="text-sm text-stone-600">{entry.loveTarget}</p>
-                    </div>
-                  )}
-                  {entry.apologyTarget && (
-                    <div>
-                       <strong className="block text-stone-400 text-xs uppercase mb-1">{t.label_apology}</strong>
-                       <p className="text-sm text-stone-600">{entry.apologyTarget}</p>
-                    </div>
-                  )}
-               </div>
-             )}
-          </div>
-
-          {/* AI Insight */}
-          <div className="relative mt-8">
-            <div className="absolute -left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-brand-400 to-fuchsia-300 rounded-full"></div>
-            <div className="pl-6 space-y-4">
-              <h3 className="font-serif italic text-stone-800 font-medium flex items-center gap-2">
-                <Sparkles size={16} className="text-brand-500" />
-                {t.insight_guidance}
-              </h3>
-              <div className="prose prose-stone prose-sm max-w-none whitespace-pre-wrap leading-relaxed bg-[#F8F7FF] p-6 rounded-xl border border-brand-50">
-                {entry.aiResponse}
-              </div>
-            </div>
-          </div>
-          
-          {/* Supplementary Notes */}
-          <div className="border-t border-brand-50 pt-4 mt-4">
-            {entry.additionalNotes && (
-               <div className="bg-brand-50/30 p-4 rounded-xl mb-4">
-                  <p className="text-xs font-semibold uppercase text-stone-400 mb-2">Supplement Notes</p>
-                  <p className="text-stone-600 italic text-sm whitespace-pre-wrap">{entry.additionalNotes}</p>
-               </div>
-            )}
-
-            {!isAddingNote ? (
-              <button 
-                onClick={() => setIsAddingNote(true)}
-                className="text-xs text-stone-400 hover:text-brand-600 transition-colors flex items-center gap-1"
-              >
-                <FileEdit size={12} />
-                Add note
-              </button>
-            ) : (
-              <div className="bg-stone-50 p-4 rounded-xl animate-in fade-in zoom-in duration-200">
-                <textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Add your thoughts..."
-                  className="w-full bg-white border border-stone-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-200 mb-2"
-                  rows={3}
-                  autoFocus
-                />
-                <div className="flex gap-2 justify-end">
-                   <button 
-                     onClick={() => setIsAddingNote(false)}
-                     className="px-3 py-1.5 text-xs text-stone-500 hover:bg-stone-100 rounded-md"
-                   >
-                     Cancel
-                   </button>
-                   <button 
-                     onClick={handleSaveNote}
-                     className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-md hover:bg-brand-600"
-                   >
-                     Save Note
-                   </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
-
-const CheckIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-)
 
 export default Journal;

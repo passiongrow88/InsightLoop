@@ -1,9 +1,16 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-content: [
-  "./index.html",
-  "./**/*.{js,ts,jsx,tsx}",
-],
+  content: [
+    "./index.html",
+
+    // 你的项目实际位置（根目录）
+    "./App.tsx",
+    "./components/**/*.{js,ts,jsx,tsx}",
+    "./services/**/*.{js,ts,jsx,tsx}",
+
+    // 如果你 src 里也有组件/服务，也一起扫
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
       colors: {
@@ -17,10 +24,10 @@ content: [
           600: "#7C3AED",
           700: "#6D28D9",
           800: "#5B21B6",
-          900: "#4C1D95"
-        }
-      }
-    }
+          900: "#4C1D95",
+        },
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };

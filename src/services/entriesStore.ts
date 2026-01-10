@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import type { JournalEntry, ManifestationItem } from "../types";
+import type { JournalEntry, ManifestationItem } from "../../types";
 
 export type EntryType = "journal" | "manifestation";
 
@@ -16,6 +16,16 @@ async function requireUid(): Promise<string> {
   return uid;
 }
 
+function toCreatedAtNumber(v: any): number {
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    if (!Number.isNaN(t)) return t;
+  }
+  return Date.now();
+}
+
 function mapJournalRowToEntry(r: any): JournalEntry {
   return {
     id: r.id,
@@ -29,6 +39,9 @@ function mapJournalRowToEntry(r: any): JournalEntry {
     loveTarget: r.love_target || "",
     apologyTarget: r.apology_target || "",
     insight: r.insight || "",
+
+    // ✅【修复点】补 createdAt（number）
+    createdAt: toCreatedAtNumber(r.created_at),
   } as JournalEntry;
 }
 
@@ -38,7 +51,9 @@ function mapManifestRowToItem(r: any): ManifestationItem {
     goal: r.goal || "",
     expectedDate: r.expected_date || "",
     reason: r.reason || "",
-    createdAt: r.created_at || "",
+
+    // ✅【修复点】补 createdAt（number）
+    createdAt: toCreatedAtNumber(r.created_at),
   } as ManifestationItem;
 }
 
@@ -90,6 +105,9 @@ export async function createEntry<T extends { id?: string }>(
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
       insight: (e as any).insight || "",
+
+      // ✅【修复点】写 created_at
+      created_at: new Date((e as any).createdAt ?? Date.now()).toISOString(),
     };
 
     // 如果你前端已经有 id（例如 uuid），就沿用
@@ -119,7 +137,10 @@ export async function createEntry<T extends { id?: string }>(
     user_id: uid,
     goal: g.goal || "",
     expected_date: (g as any).expectedDate || "",
-    reason: g.reason || "",
+    reason: (g as any).reason || "",
+
+    // ✅【修复点】写 created_at
+    created_at: new Date((g as any).createdAt ?? Date.now()).toISOString(),
   };
 
   if ((g as any).id) {
@@ -163,6 +184,9 @@ export async function updateEntry<T>(
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
       insight: (e as any).insight || "",
+
+      // ✅【修复点】更新时也写 created_at（确保一致）
+      created_at: new Date((e as any).createdAt ?? Date.now()).toISOString(),
     };
 
     const { error } = await supabase
@@ -179,7 +203,10 @@ export async function updateEntry<T>(
     user_id: uid,
     goal: g.goal || "",
     expected_date: (g as any).expectedDate || "",
-    reason: g.reason || "",
+    reason: (g as any).reason || "",
+
+    // ✅【修复点】
+    created_at: new Date((g as any).createdAt ?? Date.now()).toISOString(),
   };
 
   const { error } = await supabase

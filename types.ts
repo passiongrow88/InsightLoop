@@ -1,4 +1,4 @@
-// types.ts
+﻿// types.ts
 
 export type Language = "zh" | "en";
 
@@ -8,8 +8,8 @@ export type ViewType =
   | "manifestation"
   | "history"
   | "billing"
-  | "member-space"  // ✅ 新增：会员空间
-  | "admin";        // ✅ 新增：管理员后台
+  | "member-space"  // âœ… æ–°å¢žï¼šä¼šå‘˜ç©ºé—´
+  | "admin";        // âœ… æ–°å¢žï¼šç®¡ç†å‘˜åŽå°
 
 export interface User {
   email: string;
@@ -18,6 +18,9 @@ export interface User {
 }
 
 export interface JournalEntry {
+  createdAt: number;
+  aiResponse?: string;
+  additionalNotes?: string;
   id: string;
   date: string;
   event: string;
@@ -36,6 +39,11 @@ export interface JournalEntry {
 }
 
 export interface ManifestationItem {
+  createdAt: number;
+  status?: 'active' | 'completed' | 'delayed';
+  beneficiaries?: string;
+  aiGuidance?: string;
+  date?: string;
   id: string;
   goal: string;
   expectedDate: string;
@@ -45,7 +53,7 @@ export interface ManifestationItem {
   user_id?: string;
 }
 
-// ✅ 新增：会员空间资源类型
+// âœ… æ–°å¢žï¼šä¼šå‘˜ç©ºé—´èµ„æºç±»åž‹
 export interface Resource {
   id: string;
   title: string;
@@ -64,3 +72,5 @@ export interface Resource {
   is_active: boolean;
   created_at: string;
 }
+
+

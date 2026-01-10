@@ -11,23 +11,22 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+
     "strict": true,
+    "noImplicitAny": false,
+
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-
-  /* ✅ 只编译真正的前端源码 */
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-
-  /* ✅ 明确排除所有“配置 / 输出 / 声明文件” */
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": [
     "node_modules",
     "dist",
-    "vite.config.ts",
-    "vite.config.*",
-    "**/*.d.ts"
+    ".vercel",
+    "_backup_ignore",
+    "backup",
+    "vite.config.*"
   ],
-
   "references": [{ "path": "./tsconfig.node.json" }]
 }

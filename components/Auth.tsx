@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { User, Language } from "../types";
 import { translations } from "../i18n";
 import { Sparkles, ArrowRight, UserCircle, Lock, Mail } from "lucide-react";
-import { signUp, signIn } from "../services/cloudStore";
+import { supabase } from "../services/supabaseClient";
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -28,32 +28,87 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
     setLoading(true);
 
     try {
-      if (isRegistering) {
-        // ✅ 兼容：signUp 可能只接收 (email,password) 或 (email,password,name)
-        // 你原本传 3 个参数，我保留
-        await (signUp as any)(formData.email, formData.password, formData.name);
+      const email = formData.email.trim().toLowerCase();
+      const password = formData.password;
 
-        // 注册成功后，引导用户登录
+      if (!email || !password) {
+        throw new Error(t.auth_error_invalid || "Invalid email or password.");
+      }
+
+      if (isRegistering) {
+        // ✅ Supabase signUp
+        // NOTE: Supabase does not store "name" automatically unless you put it in user metadata
+        // This will NOT affect your UI, just enriches profile data.
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: formData.name || "",
+            },
+            emailRedirectTo: window.location.origin,
+          },
+        });
+
+        if (signUpError) throw signUpError;
+
+        // 常见情况：需要邮箱验证
+        if (data?.user && !data.user.email_confirmed_at) {
+          setIsRegistering(false);
+
+          // ✅【修复点 1】不再引用不存在的 t.auth_register_success
+          setError(
+            language === "zh"
+              ? "注册成功。请先验证邮箱，然后再登录。"
+              : "Registered. Please verify email, then login."
+          );
+          return;
+        }
+
+        // 若不需要验证/立即有 session
+        if (data?.user) {
+          const u = {
+            id: data.user.id,
+            email: data.user.email ?? email,
+            name: formData.name || "",
+          } as unknown as User;
+
+          // ✅ 只负责跳转/体验；真正 session 由 App.tsx 的 onAuthStateChange 统一管理
+          onLogin(u);
+          return;
+        }
+
         setIsRegistering(false);
-        setError(t.auth_register_success || "Registered. Please login.");
+
+        // ✅【修复点 2】不再引用不存在的 t.auth_register_success
+        setError(
+          language === "zh" ? "注册成功，请登录。" : "Registered. Please login."
+        );
         return;
       }
 
-      // ✅ 关键修复：不要解构 { user }，直接拿返回值
-      const u = (await signIn(formData.email, formData.password)) as any;
+      // ✅ Supabase signInWithPassword
+      const { data, error: signInError } = await supabase.auth.signInWithPassword(
+        { email, password }
+      );
 
-      // 兼容两种返回：
-      // A) signIn() 直接返回 User
-      // B) signIn() 返回 { user: User }
-      const user: User | null = u?.user ? (u.user as User) : (u as User);
+      if (signInError) throw signInError;
 
-      if (!user || !user.email) {
+      if (!data?.user) {
         throw new Error("Login succeeded but user is missing.");
       }
 
-      // ✅ 关键：登录成功后必须把 user 交给 App
+      const user: User = {
+        id: data.user.id,
+        email: data.user.email ?? email,
+        // Supabase user metadata (if you stored name during signUp)
+        name: (data.user.user_metadata?.name as string) || "",
+      } as unknown as User;
+
+      // ✅ 交给 App：它会切 view；currentUser 会由 onAuthStateChange 同步
       onLogin(user);
     } catch (err: any) {
+      // Supabase error message is usually human-readable
       setError(err?.message || t.auth_error_invalid);
     } finally {
       setLoading(false);
@@ -78,6 +133,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
                 ? "bg-white text-stone-600 shadow-sm"
                 : "text-stone-400 hover:text-stone-500"
             }`}
+            disabled={loading}
           >
             EN
           </button>
@@ -88,6 +144,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
                 ? "bg-white text-stone-600 shadow-sm"
                 : "text-stone-400 hover:text-stone-500"
             }`}
+            disabled={loading}
           >
             中文
           </button>
@@ -136,6 +193,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   className="w-full pl-12 pr-4 py-3 bg-white/60 border-none rounded-2xl focus:outline-none focus:ring-1 focus:ring-brand-200/50 shadow-sm transition-all font-serif text-stone-600 placeholder:text-stone-300"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -159,6 +217,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
                 }
                 autoComplete="email"
                 className="w-full pl-12 pr-4 py-3 bg-white/60 border-none rounded-2xl focus:outline-none focus:ring-1 focus:ring-brand-200/50 shadow-sm transition-all font-serif text-stone-600 placeholder:text-stone-300"
+                disabled={loading}
               />
             </div>
           </div>
@@ -181,6 +240,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
                 }
                 autoComplete="current-password"
                 className="w-full pl-12 pr-4 py-3 bg-white/60 border-none rounded-2xl focus:outline-none focus:ring-1 focus:ring-brand-200/50 shadow-sm transition-all font-serif text-stone-600 placeholder:text-stone-300"
+                disabled={loading}
               />
             </div>
           </div>
@@ -216,6 +276,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
               setError("");
             }}
             className="text-stone-400 text-xs hover:text-brand-500 transition-colors tracking-widest uppercase"
+            disabled={loading}
           >
             {isRegistering ? t.auth_switch_to_login : t.auth_switch_to_register}
           </button>

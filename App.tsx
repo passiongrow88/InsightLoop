@@ -11,15 +11,13 @@ import AdminResourceUpload from "./components/AdminResourceUpload";
 
 import { getMyEntitlement, isPaywallActive } from "./services/entitlements";
 import {
-  loadJournals,
-  saveJournal,
-  deleteJournal,
-  loadGoals,
-  saveGoal,
-  deleteGoal,
-} from "./services/cloudStore";
+  listEntries,
+  createEntry,
+  updateEntry,
+  deleteEntry,
+} from "./services/entriesStore";
 
-import { supabase } from "./supabaseClient"; // ✅ 根目录版（与 services/cloudStore.ts 对齐）
+import { supabase } from "./services/supabaseClient";
 
 import {
   JournalEntry,
@@ -30,7 +28,7 @@ import {
 } from "./types";
 
 function App() {
-  // Auth State (真实来源：Supabase session)
+  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
@@ -44,65 +42,57 @@ function App() {
 
   // Loading & Initialization
   const [isAppReady, setIsAppReady] = useState(false);
-  const [cloudLoaded, setCloudLoaded] = useState(false);
 
   // Paywall State
   const [paywall, setPaywall] = useState(false);
   const [paywallChecked, setPaywallChecked] = useState(false);
 
-  // 0) Language global
+  // Data loading indicator (avoid flashing empty lists)
+  const [cloudLoaded, setCloudLoaded] = useState(false);
+
+  // 1) Initial Load (CRITICAL: ONLY trust Supabase session, not localStorage session)
   useEffect(() => {
     const savedLang = localStorage.getItem("insightLoop_lang_global");
     if (savedLang) setLanguage(savedLang as Language);
-    setIsAppReady(true);
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem("insightLoop_lang_global", language);
-  }, [language]);
-
-  // 1) Boot: get Supabase session + listen auth changes (跨设备关键)
-  useEffect(() => {
-    if (!isAppReady) return;
-
-    let alive = true;
-
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const u = data.session?.user;
-
-      if (!alive) return;
-
-      if (u) {
-        // 你原本的 User 类型如果不是 supabase user，这里只保留最必要字段
-        setCurrentUser({
-          id: u.id,
-          email: u.email ?? "",
-        } as any);
-      } else {
-        setCurrentUser(null);
+    const init = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.warn("Supabase getUser error:", error.message);
+          setCurrentUser(null);
+        } else if (data?.user) {
+          setCurrentUser({
+            id: data.user.id,
+            email: data.user.email ?? "",
+          } as unknown as User);
+        } else {
+          setCurrentUser(null);
+        }
+      } finally {
+        setIsAppReady(true);
       }
-    })();
+    };
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user;
-      if (u) {
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+      if (session?.user) {
         setCurrentUser({
-          id: u.id,
-          email: u.email ?? "",
-        } as any);
+          id: session.user.id,
+          email: session.user.email ?? "",
+        } as unknown as User);
       } else {
         setCurrentUser(null);
       }
     });
 
     return () => {
-      alive = false;
       sub.subscription.unsubscribe();
     };
-  }, [isAppReady]);
+  }, []);
 
-  // 2) Load cloud data after auth user ready
+  // 2) Load User Data when User Changes (NOW: from Supabase)
   useEffect(() => {
     if (!currentUser) {
       setEntries([]);
@@ -117,20 +107,48 @@ function App() {
 
     (async () => {
       try {
-        const [j, g] = await Promise.all([loadJournals(), loadGoals()]);
-        setEntries(j || []);
-        setGoals(g || []);
+        const [journalRows, manifestRows] = await Promise.all([
+          listEntries<JournalEntry>("journal"),
+          listEntries<ManifestationItem>("manifestation"),
+        ]);
+
+        setEntries(journalRows || []);
+        setGoals(manifestRows || []);
       } catch (e) {
-        console.error("Cloud load failed:", e);
-        setEntries([]);
-        setGoals([]);
+        console.error("Error loading cloud data", e);
+
+        // Fallback: show local cache if any (NOT source of truth)
+        const userKey = `insightLoop_data_${currentUser.email}`;
+        const userDataStr = localStorage.getItem(userKey);
+        if (userDataStr) {
+          try {
+            const userData = JSON.parse(userDataStr);
+            setEntries(userData.entries || []);
+            setGoals(userData.goals || []);
+            if (userData.language) setLanguage(userData.language);
+          } catch {}
+        }
       } finally {
         setCloudLoaded(true);
       }
     })();
   }, [currentUser]);
 
-  // 3) Paywall check
+  // 3) Save lightweight cache (optional fallback, not source of truth)
+  useEffect(() => {
+    if (currentUser && isAppReady) {
+      const userKey = `insightLoop_data_${currentUser.email}`;
+      const userData = { entries, goals, language };
+      localStorage.setItem(userKey, JSON.stringify(userData));
+    }
+  }, [entries, goals, currentUser, isAppReady, language]);
+
+  // 4) Persist Language Global Preference
+  useEffect(() => {
+    localStorage.setItem("insightLoop_lang_global", language);
+  }, [language]);
+
+  // 5) Check Paywall (after login)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -148,14 +166,17 @@ function App() {
   }, [currentUser]);
 
   // --- Actions ---
-  // Auth 组件登录成功后，应该已经触发 supabase session
-  // 这里仅用于切 view
+
+  // IMPORTANT:
+  // Auth.tsx MUST do real Supabase sign-in.
+  // After sign-in, onAuthStateChange above will set currentUser automatically.
   const handleLogin = (_user: User) => {
     setCurrentView("home");
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setCurrentUser(null);
     setCurrentView("home");
     setEditingEntry(null);
     setPaywall(false);
@@ -164,27 +185,46 @@ function App() {
   };
 
   const handleUpdateUser = (updatedUser: User) => {
-    // 你如果有 profile 更新逻辑，可保留；不影响跨设备
+    // Keep in-memory user updated for UI fields (if any)
     setCurrentUser(updatedUser);
+
+    // Keep your old "users" cache if you still use it elsewhere
+    const usersStr = localStorage.getItem("insightLoop_users");
+    if (usersStr) {
+      try {
+        const users: User[] = JSON.parse(usersStr);
+        const newUsers = users.map((u) =>
+          u.email === updatedUser.email ? updatedUser : u
+        );
+        localStorage.setItem("insightLoop_users", JSON.stringify(newUsers));
+      } catch {}
+    }
   };
 
-  // --- Journal CRUD ---
+  // --- Journal CRUD (write to Supabase) ---
+
   const handleAddEntry = async (entry: JournalEntry) => {
+    // optimistic UI
     setEntries((prev) => [entry, ...prev]);
     setCurrentView("history");
     setEditingEntry(null);
 
     try {
-      await saveJournal(entry);
-      const j = await loadJournals();
-      setEntries(j || []);
+      const newId = await createEntry("journal", entry);
+      // ensure local state id matches DB id for later update/delete
+      setEntries((prev) =>
+        prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
+      );
     } catch (e) {
-      console.error("saveJournal failed", e);
-      alert("保存失败：云端写入失败（请确认手机/电脑都真的登录成功）");
+      console.error("Create journal entry failed", e);
+      // rollback
+      setEntries((prev) => prev.filter((x) => x !== entry));
+      alert("保存失败：云端写入失败（请确认已登录且网络正常）");
     }
   };
 
   const handleUpdateEntry = async (updatedEntry: JournalEntry) => {
+    // optimistic
     setEntries((prev) =>
       prev.map((e) => (e.id === updatedEntry.id ? updatedEntry : e))
     );
@@ -192,12 +232,11 @@ function App() {
     setEditingEntry(null);
 
     try {
-      await saveJournal(updatedEntry);
-      const j = await loadJournals();
-      setEntries(j || []);
+      if (!updatedEntry.id) throw new Error("Missing entry id");
+      await updateEntry(updatedEntry.id, "journal", updatedEntry);
     } catch (e) {
-      console.error("update journal failed", e);
-      alert("更新失败：云端更新失败");
+      console.error("Update journal entry failed", e);
+      alert("更新失败：云端更新失败（请刷新后重试）");
     }
   };
 
@@ -206,13 +245,11 @@ function App() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
 
     try {
-      await deleteJournal(id);
-      const j = await loadJournals();
-      setEntries(j || []);
+      await deleteEntry(id, "journal");
     } catch (e) {
-      console.error("delete journal failed", e);
-      setEntries(snapshot);
-      alert("删除失败：云端删除失败");
+      console.error("Delete journal entry failed", e);
+      setEntries(snapshot); // rollback
+      alert("删除失败：云端删除失败（请刷新后重试）");
     }
   };
 
@@ -226,16 +263,20 @@ function App() {
     setCurrentView("history");
   };
 
-  // --- Goals CRUD ---
+  // --- Manifestation CRUD (write to Supabase) ---
+
   const handleAddGoal = async (goal: ManifestationItem) => {
     setGoals((prev) => [goal, ...prev]);
+
     try {
-      await saveGoal(goal);
-      const g = await loadGoals();
-      setGoals(g || []);
+      const newId = await createEntry("manifestation", goal);
+      setGoals((prev) =>
+        prev.map((g) => (g === goal ? { ...g, id: g.id ?? newId } : g))
+      );
     } catch (e) {
-      console.error("saveGoal failed", e);
-      alert("保存失败：显化云端写入失败");
+      console.error("Create goal failed", e);
+      setGoals((prev) => prev.filter((x) => x !== goal));
+      alert("保存失败：显化目标云端写入失败");
     }
   };
 
@@ -243,27 +284,26 @@ function App() {
     setGoals((prev) =>
       prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g))
     );
+
     try {
-      await saveGoal(updatedGoal);
-      const g = await loadGoals();
-      setGoals(g || []);
+      if (!updatedGoal.id) throw new Error("Missing goal id");
+      await updateEntry(updatedGoal.id, "manifestation", updatedGoal);
     } catch (e) {
-      console.error("update goal failed", e);
-      alert("更新失败：显化云端更新失败");
+      console.error("Update goal failed", e);
+      alert("更新失败：显化目标云端更新失败");
     }
   };
 
   const handleDeleteGoal = async (id: string) => {
     const snapshot = goals;
     setGoals((prev) => prev.filter((g) => g.id !== id));
+
     try {
-      await deleteGoal(id);
-      const g = await loadGoals();
-      setGoals(g || []);
+      await deleteEntry(id, "manifestation");
     } catch (e) {
-      console.error("delete goal failed", e);
+      console.error("Delete goal failed", e);
       setGoals(snapshot);
-      alert("删除失败：显化云端删除失败");
+      alert("删除失败：显化目标云端删除失败");
     }
   };
 
@@ -273,6 +313,7 @@ function App() {
   };
 
   // --- Render ---
+
   if (!isAppReady) return null;
 
   if (!currentUser) {
@@ -281,8 +322,13 @@ function App() {
     );
   }
 
+  // Wait paywall check (avoid flashing UI)
   if (!paywallChecked) return null;
+
+  // Paywall block
   if (paywall) return <Paywall />;
+
+  // Optional: wait cloud load once after login (prevents "empty flash")
   if (!cloudLoaded) return null;
 
   const renderContent = () => {

@@ -1,5 +1,5 @@
-import { supabase } from "../supabaseClient";
-import type { JournalEntry, ManifestationItem, User } from "../types";
+import { supabase } from "./supabaseClient";
+import type { JournalEntry, ManifestationItem, User } from "../../types";
 
 // ✅ 对齐你真实 Supabase 表名
 const TABLE_JOURNAL = "journal_entries";
@@ -11,6 +11,18 @@ async function requireUid(): Promise<string> {
   const uid = data.user?.id;
   if (!uid) throw new Error("Not authenticated: missing user id.");
   return uid;
+}
+
+// ✅ 统一：把 Supabase 的 created_at 转成 number(createdAt)
+// - 兼容：created_at 可能是 string / Date / number / null
+function toCreatedAtNumber(v: any): number {
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    if (!Number.isNaN(t)) return t;
+  }
+  return Date.now();
 }
 
 // --------------------
@@ -80,6 +92,9 @@ export async function loadJournals(): Promise<JournalEntry[]> {
     loveTarget: r.love_target || "",
     apologyTarget: r.apology_target || "",
     insight: r.insight || "",
+
+    // ✅【修复点】补上 createdAt（number），解决你 types.ts 强制必填导致的 TS 报错
+    createdAt: toCreatedAtNumber(r.created_at),
   })) as JournalEntry[];
 }
 
@@ -100,6 +115,9 @@ export async function saveJournal(entry: JournalEntry): Promise<void> {
     love_target: entry.loveTarget || "",
     apology_target: entry.apologyTarget || "",
     insight: (entry as any).insight || "",
+
+    // ✅【修复点】写入 created_at，跨设备排序 & TS 一致
+    created_at: new Date((entry as any).createdAt ?? Date.now()).toISOString(),
   };
 
   const { error } = await supabase
@@ -139,7 +157,9 @@ export async function loadGoals(): Promise<ManifestationItem[]> {
     goal: r.goal || "",
     expectedDate: r.expected_date || "",
     reason: r.reason || "",
-    createdAt: r.created_at || "",
+
+    // ✅ 同样补 createdAt（number）
+    createdAt: toCreatedAtNumber(r.created_at),
   })) as ManifestationItem[];
 }
 
@@ -150,8 +170,11 @@ export async function saveGoal(goal: ManifestationItem): Promise<void> {
     id: goal.id,
     user_id: uid,
     goal: goal.goal || "",
-    expected_date: goal.expectedDate || "",
-    reason: goal.reason || "",
+    expected_date: (goal as any).expectedDate || "",
+    reason: (goal as any).reason || "",
+
+    // ✅ 写 created_at（可选，但有了更一致）
+    created_at: new Date((goal as any).createdAt ?? Date.now()).toISOString(),
   };
 
   const { error } = await supabase
