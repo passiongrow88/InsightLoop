@@ -1,9 +1,10 @@
 name: Phoenix Preview
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/phoenix-journal-flow
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -12,14 +13,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: phoenix-preview
+  group: phoenix-preview-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'feature/phoenix-journal-flow'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout preview branch
         uses: actions/checkout@v4
 
       - name: Setup Node
@@ -50,6 +52,7 @@ jobs:
           path: dist
 
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'feature/phoenix-journal-flow'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
