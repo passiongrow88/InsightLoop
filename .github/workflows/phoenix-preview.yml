@@ -23,6 +23,41 @@ jobs:
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Apply deterministic compile repairs
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('components/Journal.tsx')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'await saveJournal(updated, currentUser);': 'await saveJournal(updated);',
+              '.replaceAll("-", "")': '.replace(/-/g, "")',
+              '{t.event}': '{t.label_event}',
+              '{t.reflection}': '{t.label_reflection}',
+              '{t.gratitude}': '{t.label_gratitude}',
+              '{t.selfTalk}': '{t.label_selftalk}',
+              '{t.angelNumbers}': '{t.label_angel}',
+              '{t.dreams}': '{t.label_dreams}',
+              '{t.notes}': '{language === "zh" ? "补充记录" : "Additional Notes"}',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add components/Journal.tsx
+            git commit -m "fix: repair Phoenix journal TypeScript build"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
