@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - .github/workflows/enable-gh-pages.yml
+  pull_request:
+    branches:
+      - main
+    types: [synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -21,6 +25,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'pull_request' || github.head_ref == 'feature/phoenix-journal-flow'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
