@@ -1,63 +1,24 @@
 name: Phoenix Preview
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    types: [opened, synchronize, reopened]
+      - feature/phoenix-journal-flow
   workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
-  issues: write
 
 concurrency:
-  group: phoenix-preview-${{ github.event.pull_request.number || github.ref }}
+  group: phoenix-preview-publish
   cancel-in-progress: true
 
 jobs:
   build-and-publish:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'feature/phoenix-journal-flow'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-
-      - name: Apply deterministic compile repairs
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('components/Journal.tsx')
-          text = path.read_text(encoding='utf-8')
-          replacements = {
-              'await saveJournal(updated, currentUser);': 'await saveJournal(updated);',
-              '.replaceAll("-", "")': '.replace(/-/g, "")',
-              '{t.event}': '{t.label_event}',
-              '{t.reflection}': '{t.label_reflection}',
-              '{t.gratitude}': '{t.label_gratitude}',
-              '{t.selfTalk}': '{t.label_selftalk}',
-              '{t.angelNumbers}': '{t.label_angel}',
-              '{t.dreams}': '{t.label_dreams}',
-              '{t.notes}': '{language === "zh" ? "补充记录" : "Additional Notes"}',
-          }
-          for old, new in replacements.items():
-              text = text.replace(old, new)
-          path.write_text(text, encoding='utf-8')
-          PY
-
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add components/Journal.tsx
-            git commit -m "fix: repair Phoenix journal TypeScript build"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -68,47 +29,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and capture output
-        id: build
-        shell: bash
-        run: |
-          set +e
-          npm run build -- --base=/InsightLoop/ > build.log 2>&1
-          status=$?
-          cat build.log
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
+      - name: Build
+        run: npm run build -- --base=/InsightLoop/
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
-      - name: Post build output to PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const raw = fs.readFileSync('build.log', 'utf8');
-            const output = raw.length > 60000 ? raw.slice(-60000) : raw;
-            const status = '${{ steps.build.outputs.status }}' === '0' ? '✅ Build passed' : '❌ Build failed';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `## ${status}\n\n\`\`\`text\n${output}\n\`\`\``
-            });
+      - name: Create self-contained preview
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
 
-      - name: Stop on build failure
-        if: steps.build.outputs.status != '0'
-        run: exit 1
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: phoenix-preview-dist
-          path: dist
-          if-no-files-found: error
+          root = Path('dist')
+          html_path = root / 'index.html'
+          html = html_path.read_text(encoding='utf-8')
+          script_match = re.search(r'<script type="module" crossorigin src="([^"]+)"></script>', html)
+          style_match = re.search(r'<link rel="stylesheet" crossorigin href="([^"]+)">', html)
+          if not script_match or not style_match:
+              raise SystemExit('Unable to locate Vite assets')
+          js_name = script_match.group(1).rsplit('/', 1)[-1]
+          css_name = style_match.group(1).rsplit('/', 1)[-1]
+          js = (root / 'assets' / js_name).read_text(encoding='utf-8').replace('</script>', '<\\/script>')
+          css = (root / 'assets' / css_name).read_text(encoding='utf-8').replace('</style>', '<\\/style>')
+          html = re.sub(r'\s*<link rel="icon"[^>]*>', '', html)
+          html = re.sub(r'\s*<link rel="apple-touch-icon"[^>]*>', '', html)
+          html = html.replace(script_match.group(0), f'<script type="module">{js}</script>')
+          html = html.replace(style_match.group(0), f'<style>{css}</style>')
+          html_path.write_text(html, encoding='utf-8')
+          print(html_path.stat().st_size)
+          PY
 
       - name: Publish preview branch
         uses: peaceiris/actions-gh-pages@v4
