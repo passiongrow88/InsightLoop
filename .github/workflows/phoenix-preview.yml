@@ -103,6 +103,38 @@ jobs:
         if: steps.build.outputs.status != '0'
         run: exit 1
 
+      - name: Create self-contained preview
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('dist')
+          html_path = root / 'index.html'
+          html = html_path.read_text(encoding='utf-8')
+
+          script_match = re.search(r'<script type="module" crossorigin src="([^"]+)"></script>', html)
+          style_match = re.search(r'<link rel="stylesheet" crossorigin href="([^"]+)">', html)
+          if not script_match or not style_match:
+              raise SystemExit('Unable to locate Vite assets in dist/index.html')
+
+          js_path = root / script_match.group(1).split('/assets/', 1)[-1]
+          js_path = root / 'assets' / js_path.name
+          css_path = root / style_match.group(1).split('/assets/', 1)[-1]
+          css_path = root / 'assets' / css_path.name
+
+          js = js_path.read_text(encoding='utf-8').replace('</script>', '<\\/script>')
+          css = css_path.read_text(encoding='utf-8').replace('</style>', '<\\/style>')
+
+          html = re.sub(r'\s*<link rel="icon"[^>]*>', '', html)
+          html = re.sub(r'\s*<link rel="apple-touch-icon"[^>]*>', '', html)
+          html = html.replace(script_match.group(0), f'<script type="module">{js}</script>')
+          html = html.replace(style_match.group(0), f'<style>{css}</style>')
+          html_path.write_text(html, encoding='utf-8')
+          print(f'Self-contained preview size: {html_path.stat().st_size} bytes')
+          PY
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
