@@ -200,7 +200,7 @@ const Journal: React.FC<JournalProps> = ({
         onAddEntry(updated);
       }
 
-      await saveJournal(updated, currentUser);
+      await saveJournal(updated);
 
       setSaveSuccess(true);
       localStorage.removeItem('insightLoop_draft');
@@ -231,7 +231,7 @@ const Journal: React.FC<JournalProps> = ({
 
   // ========= VIEW ONLY / HISTORY =========
   if (viewOnly) {
-    const sortedEntries = [...entries].sort((a, b) => (parseInt(b.date.replaceAll("-", "")) - parseInt(a.date.replaceAll("-", ""))));
+    const sortedEntries = [...entries].sort((a, b) => (parseInt(b.date.replace(/-/g, "")) - parseInt(a.date.replace(/-/g, ""))));
 
     const JournalHistoryCalendar: React.FC<{
       sortedEntries: JournalEntry[];
@@ -732,7 +732,7 @@ const Journal: React.FC<JournalProps> = ({
                 {selectedEntry.event && (
                   <div>
                     <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
-                      {t.event}
+                      {t.label_event}
                     </div>
                     <p className="text-sm text-stone-600">{selectedEntry.event}</p>
                   </div>
@@ -740,7 +740,7 @@ const Journal: React.FC<JournalProps> = ({
                 {selectedEntry.reflection && (
                   <div>
                     <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
-                      {t.reflection}
+                      {t.label_reflection}
                     </div>
                     <p className="text-sm text-stone-600">{selectedEntry.reflection}</p>
                   </div>
@@ -748,7 +748,7 @@ const Journal: React.FC<JournalProps> = ({
                 {selectedEntry.gratitude && (
                   <div>
                     <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
-                      {t.gratitude}
+                      {t.label_gratitude}
                     </div>
                     <p className="text-sm text-stone-600">{selectedEntry.gratitude}</p>
                   </div>
@@ -756,7 +756,7 @@ const Journal: React.FC<JournalProps> = ({
                 {selectedEntry.selfTalk && (
                   <div>
                     <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
-                      {t.selfTalk}
+                      {t.label_selftalk}
                     </div>
                     <p className="text-sm text-stone-600">{selectedEntry.selfTalk}</p>
                   </div>
@@ -764,7 +764,7 @@ const Journal: React.FC<JournalProps> = ({
                 {(selectedEntry as any).additionalNotes && (
                   <div>
                     <div className="text-xs uppercase tracking-widest text-stone-400 font-semibold mb-1">
-                      {t.notes}
+                      {language === "zh" ? "补充记录" : "Additional Notes"}
                     </div>
                     <p className="text-sm text-stone-600 whitespace-pre-wrap">{(selectedEntry as any).additionalNotes}</p>
                   </div>
@@ -837,7 +837,7 @@ const Journal: React.FC<JournalProps> = ({
           <div className="mt-5 space-y-4">
             <div>
               <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                {t.event}
+                {t.label_event}
               </label>
               <textarea
                 value={event}
@@ -849,7 +849,7 @@ const Journal: React.FC<JournalProps> = ({
 
             <div>
               <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                {t.reflection}
+                {t.label_reflection}
               </label>
               <textarea
                 value={reflection}
@@ -861,7 +861,7 @@ const Journal: React.FC<JournalProps> = ({
 
             <div>
               <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                {t.gratitude}
+                {t.label_gratitude}
               </label>
               <textarea
                 value={gratitude}
@@ -873,7 +873,7 @@ const Journal: React.FC<JournalProps> = ({
 
             <div>
               <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                {t.selfTalk}
+                {t.label_selftalk}
               </label>
               <textarea
                 value={selfTalk}
@@ -887,7 +887,7 @@ const Journal: React.FC<JournalProps> = ({
               <div className="mt-2 space-y-4">
                 <div>
                   <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                    {t.angelNumbers}
+                    {t.label_angel}
                   </label>
                   <input
                     value={angelNumbers}
@@ -899,7 +899,7 @@ const Journal: React.FC<JournalProps> = ({
 
                 <div>
                   <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                    {t.dreams}
+                    {t.label_dreams}
                   </label>
                   <textarea
                     value={dreams}
@@ -936,7 +936,7 @@ const Journal: React.FC<JournalProps> = ({
 
                 <div>
                   <label className="block text-xs uppercase tracking-widest text-stone-400 font-semibold mb-2">
-                    {t.notes}
+                    {language === "zh" ? "补充记录" : "Additional Notes"}
                   </label>
                   <textarea
                     value={additionalNotes}
