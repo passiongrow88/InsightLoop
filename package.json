@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "bash scripts/apply-v2-build.sh",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
