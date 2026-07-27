@@ -1,0 +1,61 @@
+name: Apply InsightLoop V2 Upgrade
+
+on:
+  push:
+    branches:
+      - feature/v2-upgrade
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-v2-upgrade
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v2-upgrade
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "InsightLoop V2"
+          git config user.email "dev@insightloop.lol"
+
+      - name: Reassemble source bundle
+        run: |
+          cat .bootstrap/newfiles.tar.gz.b64.part* | base64 --decode > /tmp/newfiles.tar.gz
+          tar -tzf /tmp/newfiles.tar.gz >/dev/null
+          base64 --decode .bootstrap/insightloop_v2_existing.patch.b64 > /tmp/insightloop_v2_existing.patch
+
+      - name: Apply existing-file changes
+        run: git am --3way /tmp/insightloop_v2_existing.patch
+
+      - name: Add V2 source and optimized assets
+        run: |
+          tar -xzf /tmp/newfiles.tar.gz -C .
+          git add -A
+          git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Remove bootstrap files
+        run: |
+          rm -rf .bootstrap
+          rm -f .github/workflows/apply-v2-upgrade.yml
+          git add -A
+          git commit -m "chore: remove V2 bootstrap artifacts"
+
+      - name: Push upgraded branch
+        run: git push origin HEAD:feature/v2-upgrade
