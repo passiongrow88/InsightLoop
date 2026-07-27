@@ -4,10 +4,18 @@ on:
   push:
     branches:
       - feature/v2-upgrade
+  pull_request:
+    branches:
+      - v2-build-base
+    types:
+      - opened
+      - synchronize
+      - reopened
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
   group: apply-v2-upgrade
@@ -30,7 +38,7 @@ jobs:
           git config user.name "InsightLoop V2"
           git config user.email "dev@insightloop.lol"
 
-      - name: Reassemble source bundle
+      - name: Reassemble uploaded patch
         run: |
           cat .bootstrap/newfiles.tar.gz.b64.part* | base64 --decode > /tmp/newfiles.tar.gz
           tar -tzf /tmp/newfiles.tar.gz >/dev/null
@@ -42,6 +50,8 @@ jobs:
       - name: Add V2 source and optimized assets
         run: |
           tar -xzf /tmp/newfiles.tar.gz -C .
+          rm -f scripts/apply-v2-build.sh
+          npm pkg delete scripts.prebuild
           git add -A
           git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
 
@@ -55,7 +65,7 @@ jobs:
           rm -rf .bootstrap
           rm -f .github/workflows/apply-v2-upgrade.yml
           git add -A
-          git commit -m "chore: remove V2 bootstrap artifacts"
+          git commit -m "chore: finalize V2 preview branch"
 
       - name: Push upgraded branch
         run: git push origin HEAD:feature/v2-upgrade
