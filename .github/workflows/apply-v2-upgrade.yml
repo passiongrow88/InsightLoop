@@ -30,33 +30,93 @@ jobs:
           git config user.name "InsightLoop V2"
           git config user.email "dev@insightloop.lol"
 
-      - name: Diagnose verified V2 payload
+      - name: Reconstruct V2 archive and patch
         shell: bash
         run: |
-          set +e
-          : > v2-payload-diagnostics.txt
-          {
-            echo "files:"
-            ls -lah .bootstrap/v2chunks || true
-            echo "raw character counts:"
-            wc -c .bootstrap/v2chunks/chunk-* || true
-            cat .bootstrap/v2chunks/chunk-* > /tmp/v2-payload.b64
-            tr -d '\r\n\t ' < /tmp/v2-payload.b64 > /tmp/v2-payload.clean.b64
-            echo "clean base64 characters: $(wc -c < /tmp/v2-payload.clean.b64)"
-            base64 --decode /tmp/v2-payload.clean.b64 > /tmp/v2-payload.gz 2>/tmp/base64-error.txt
-            echo "base64 status: $?"
-            cat /tmp/base64-error.txt
-            echo "decoded bytes: $(wc -c < /tmp/v2-payload.gz)"
-            file /tmp/v2-payload.gz
-            echo "first 32 bytes:"
-            xxd -l 32 /tmp/v2-payload.gz
-            echo "last 32 bytes:"
-            tail -c 32 /tmp/v2-payload.gz | xxd
-            gzip -t /tmp/v2-payload.gz 2>/tmp/gzip-error.txt
-            echo "gzip status: $?"
-            cat /tmp/gzip-error.txt
-          } >> v2-payload-diagnostics.txt 2>&1
-          git add v2-payload-diagnostics.txt
-          git commit -m "ci: record V2 payload diagnostics"
-          git push origin HEAD:feature/v2-upgrade
-          exit 1
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib, itertools, tarfile, io
+
+          root = Path('.bootstrap')
+          report = []
+
+          def clean(data: bytes) -> bytes:
+              return b''.join(data.split())
+
+          parts = sorted(root.glob('newfiles.tar.gz.b64.part*'))
+          report.append('parts=' + ','.join(f'{p.name}:{p.stat().st_size}' for p in parts))
+          found = None
+          for perm in itertools.permutations(parts):
+              labels = ','.join(p.name for p in perm)
+              texts = [clean(p.read_bytes()) for p in perm]
+              candidates = []
+              try:
+                  candidates.append(('joined-base64', base64.b64decode(b''.join(texts), validate=False)))
+              except Exception as exc:
+                  report.append(f'{labels} joined decode error: {exc}')
+              try:
+                  candidates.append(('decoded-parts', b''.join(base64.b64decode(t, validate=False) for t in texts)))
+              except Exception as exc:
+                  report.append(f'{labels} parts decode error: {exc}')
+              for mode, payload in candidates:
+                  try:
+                      raw = gzip.decompress(payload)
+                      with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as archive:
+                          names = archive.getnames()
+                      found = (labels, mode, payload, names)
+                      break
+                  except Exception:
+                      pass
+              if found:
+                  break
+
+          if not found:
+              report.append('No valid tar.gz permutation found.')
+              Path('v2-archive-diagnostics.txt').write_text('\n'.join(report), encoding='utf-8')
+              raise SystemExit(2)
+
+          labels, mode, payload, names = found
+          Path('/tmp/newfiles.tar.gz').write_bytes(payload)
+          report.append(f'archive_order={labels}')
+          report.append(f'archive_mode={mode}')
+          report.append(f'archive_bytes={len(payload)}')
+          report.append(f'archive_sha256={hashlib.sha256(payload).hexdigest()}')
+          report.append(f'archive_files={len(names)}')
+          report.extend('archive_sample=' + name for name in names[:20])
+
+          patch_text = clean((root / 'insightloop_v2_existing.patch.b64').read_bytes())
+          patch = base64.b64decode(patch_text, validate=False)
+          Path('/tmp/insightloop_v2_existing.patch').write_bytes(patch)
+          report.append(f'patch_bytes={len(patch)}')
+          report.append(f'patch_prefix={patch[:80]!r}')
+          report.append(f'patch_sha256={hashlib.sha256(patch).hexdigest()}')
+          Path('v2-archive-diagnostics.txt').write_text('\n'.join(report), encoding='utf-8')
+          PY
+
+      - name: Apply existing-file changes
+        run: git am --3way /tmp/insightloop_v2_existing.patch
+
+      - name: Add V2 source and optimized assets
+        run: |
+          tar -xzf /tmp/newfiles.tar.gz -C .
+          rm -rf .bootstrap
+          rm -f scripts/apply-v2-build.sh
+          rm -f .github/workflows/apply-v2-upgrade.yml
+          npm pkg delete scripts.prebuild || true
+          git add -A
+          git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Push upgraded branch
+        run: git push origin HEAD:feature/v2-upgrade
+
+      - name: Preserve diagnostics on failure
+        if: failure()
+        run: |
+          git add v2-archive-diagnostics.txt || true
+          git commit -m "ci: record V2 archive diagnostics" || true
+          git push origin HEAD:feature/v2-upgrade || true
