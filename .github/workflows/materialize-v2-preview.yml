@@ -1,0 +1,67 @@
+name: Materialize InsightLoop V2 Preview
+
+on:
+  pull_request_target:
+    branches:
+      - v2-build-base
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: materialize-v2-preview
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feature/v2-upgrade' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout V2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v2-upgrade
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "InsightLoop V2 Builder"
+          git config user.email "dev@insightloop.lol"
+
+      - name: Decode uploaded patch and source bundle
+        run: |
+          cat .bootstrap/newfiles.tar.gz.b64.part* | base64 --decode > /tmp/insightloop-v2-newfiles.tar.gz
+          base64 --decode .bootstrap/insightloop_v2_existing.patch.b64 > /tmp/insightloop-v2-existing.patch
+          tar -tzf /tmp/insightloop-v2-newfiles.tar.gz >/dev/null
+
+      - name: Apply uploaded patch
+        run: git am --3way /tmp/insightloop-v2-existing.patch
+
+      - name: Add V2 components and optimized assets
+        run: |
+          tar -xzf /tmp/insightloop-v2-newfiles.tar.gz -C .
+          git add -A
+          git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
+
+      - name: Remove temporary bootstrap machinery
+        run: |
+          rm -rf .bootstrap
+          rm -f .github/workflows/apply-v2-upgrade.yml
+          rm -f scripts/apply-v2-build.sh
+          npm pkg delete scripts.prebuild
+          git add -A
+          git commit -m "chore: finalize V2 preview branch"
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Push materialized V2 branch
+        run: git push origin HEAD:feature/v2-upgrade
