@@ -4,18 +4,10 @@ on:
   push:
     branches:
       - feature/v2-upgrade
-  pull_request:
-    branches:
-      - v2-build-base
-    types:
-      - opened
-      - synchronize
-      - reopened
   workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: read
 
 concurrency:
   group: apply-v2-upgrade
@@ -38,34 +30,47 @@ jobs:
           git config user.name "InsightLoop V2"
           git config user.email "dev@insightloop.lol"
 
-      - name: Reassemble uploaded patch
+      - name: Reassemble verified V2 payload
+        shell: bash
         run: |
-          cat .bootstrap/newfiles.tar.gz.b64.part* | base64 --decode > /tmp/newfiles.tar.gz
-          tar -tzf /tmp/newfiles.tar.gz >/dev/null
-          base64 --decode .bootstrap/insightloop_v2_existing.patch.b64 > /tmp/insightloop_v2_existing.patch
+          set -euxo pipefail
+          cat .bootstrap/v2chunks/chunk-* > /tmp/v2-payload.b64
+          tr -d '\r\n\t ' < /tmp/v2-payload.b64 | base64 --decode > /tmp/v2-payload.gz
+          ls -lh /tmp/v2-payload.gz
+          sha256sum /tmp/v2-payload.gz
+          gzip -t /tmp/v2-payload.gz
 
-      - name: Apply existing-file changes
-        run: git am --3way /tmp/insightloop_v2_existing.patch
-
-      - name: Add V2 source and optimized assets
+      - name: Apply V2 payload
+        shell: bash
         run: |
-          tar -xzf /tmp/newfiles.tar.gz -C .
+          set -euxo pipefail
+          if tar -tzf /tmp/v2-payload.gz >/tmp/v2-tar-list.txt 2>/dev/null; then
+            echo "Payload is a source archive"
+            head -40 /tmp/v2-tar-list.txt
+            tar -xzf /tmp/v2-payload.gz -C .
+          else
+            echo "Payload is a compressed git patch"
+            gzip -dc /tmp/v2-payload.gz > /tmp/insightloop_v2.patch
+            head -8 /tmp/insightloop_v2.patch
+            git am --3way /tmp/insightloop_v2.patch
+          fi
+
+      - name: Remove bootstrap helpers
+        shell: bash
+        run: |
+          rm -rf .bootstrap
           rm -f scripts/apply-v2-build.sh
-          npm pkg delete scripts.prebuild
+          npm pkg delete scripts.prebuild || true
+          rm -f .github/workflows/apply-v2-upgrade.yml
           git add -A
-          git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: finalize V2 preview branch"
+          fi
 
       - name: Verify production build
         run: |
           npm ci
           npm run build
-
-      - name: Remove bootstrap files
-        run: |
-          rm -rf .bootstrap
-          rm -f .github/workflows/apply-v2-upgrade.yml
-          git add -A
-          git commit -m "chore: finalize V2 preview branch"
 
       - name: Push upgraded branch
         run: git push origin HEAD:feature/v2-upgrade
