@@ -1,0 +1,122 @@
+name: Apply InsightLoop V2 Upgrade
+
+on:
+  push:
+    branches:
+      - feature/v2-upgrade
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-v2-upgrade
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v2-upgrade
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "InsightLoop V2"
+          git config user.email "dev@insightloop.lol"
+
+      - name: Reconstruct V2 archive and patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib, itertools, tarfile, io
+
+          root = Path('.bootstrap')
+          report = []
+
+          def clean(data: bytes) -> bytes:
+              return b''.join(data.split())
+
+          parts = sorted(root.glob('newfiles.tar.gz.b64.part*'))
+          report.append('parts=' + ','.join(f'{p.name}:{p.stat().st_size}' for p in parts))
+          found = None
+          for perm in itertools.permutations(parts):
+              labels = ','.join(p.name for p in perm)
+              texts = [clean(p.read_bytes()) for p in perm]
+              candidates = []
+              try:
+                  candidates.append(('joined-base64', base64.b64decode(b''.join(texts), validate=False)))
+              except Exception as exc:
+                  report.append(f'{labels} joined decode error: {exc}')
+              try:
+                  candidates.append(('decoded-parts', b''.join(base64.b64decode(t, validate=False) for t in texts)))
+              except Exception as exc:
+                  report.append(f'{labels} parts decode error: {exc}')
+              for mode, payload in candidates:
+                  try:
+                      raw = gzip.decompress(payload)
+                      with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as archive:
+                          names = archive.getnames()
+                      found = (labels, mode, payload, names)
+                      break
+                  except Exception:
+                      pass
+              if found:
+                  break
+
+          if not found:
+              report.append('No valid tar.gz permutation found.')
+              Path('v2-archive-diagnostics.txt').write_text('\n'.join(report), encoding='utf-8')
+              raise SystemExit(2)
+
+          labels, mode, payload, names = found
+          Path('/tmp/newfiles.tar.gz').write_bytes(payload)
+          report.append(f'archive_order={labels}')
+          report.append(f'archive_mode={mode}')
+          report.append(f'archive_bytes={len(payload)}')
+          report.append(f'archive_sha256={hashlib.sha256(payload).hexdigest()}')
+          report.append(f'archive_files={len(names)}')
+          report.extend('archive_sample=' + name for name in names[:20])
+
+          patch_text = clean((root / 'insightloop_v2_existing.patch.b64').read_bytes())
+          patch = base64.b64decode(patch_text, validate=False)
+          Path('/tmp/insightloop_v2_existing.patch').write_bytes(patch)
+          report.append(f'patch_bytes={len(patch)}')
+          report.append(f'patch_prefix={patch[:80]!r}')
+          report.append(f'patch_sha256={hashlib.sha256(patch).hexdigest()}')
+          Path('v2-archive-diagnostics.txt').write_text('\n'.join(report), encoding='utf-8')
+          PY
+
+      - name: Apply existing-file changes
+        run: git am --3way /tmp/insightloop_v2_existing.patch
+
+      - name: Add V2 source and optimized assets
+        run: |
+          tar -xzf /tmp/newfiles.tar.gz -C .
+          rm -rf .bootstrap
+          rm -f scripts/apply-v2-build.sh
+          rm -f .github/workflows/apply-v2-upgrade.yml
+          npm pkg delete scripts.prebuild || true
+          git add -A
+          git commit -m "feat(v2): add Phoenix, Echoes and guided journal assets"
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Push upgraded branch
+        run: git push origin HEAD:feature/v2-upgrade
+
+      - name: Preserve diagnostics on failure
+        if: failure()
+        run: |
+          git add v2-archive-diagnostics.txt || true
+          git commit -m "ci: record V2 archive diagnostics" || true
+          git push origin HEAD:feature/v2-upgrade || true

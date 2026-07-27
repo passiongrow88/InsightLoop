@@ -1,0 +1,21 @@
+files:
+total 28K
+drwxr-xr-x 2 runner runner 4.0K Jul 27 16:42 .
+drwxr-xr-x 3 runner runner 4.0K Jul 27 16:42 ..
+-rw-r--r-- 1 runner runner  20K Jul 27 16:42 chunk-00
+raw character counts:
+20023 .bootstrap/v2chunks/chunk-00
+clean base64 characters: 20021
+base64 status: 1
+base64: invalid input
+decoded bytes: 7500
+/tmp/v2-payload.gz: gzip compressed data, from Unix, original size modulo 2^32 1963847873 gzip compressed data, unknown method, ASCII, extra field, has comment, encrypted, from FAT filesystem (MS-DOS, OS/2, NT), original size modulo 2^32 1963847873
+first 32 bytes:
+00000000: 1f8b 0800 0000 0000 0003 ec7d e973 5bd7  ...........}.s[.
+00000010: 91af 3fe3 afb8 158f 6732 4c44 02e0 aaa9  ..?.....g2LD....
+last 32 bytes:
+00000000: 0d83 6d2f 654e 3456 9773 0977 95e1 1f90  ..m/eN4V.s.w....
+00000010: 3516 5e98 2fd2 a227 f8b1 bac6 c1f0 0d75  5.^./..'.......u
+gzip status: 1
+
+gzip: /tmp/v2-payload.gz: unexpected end of file
