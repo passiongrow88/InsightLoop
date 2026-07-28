@@ -1,0 +1,46 @@
+name: Assemble Phoenix design images
+
+on:
+  push:
+    branches:
+      - design/phoenix-layered-animation-assets
+    paths:
+      - "docs/phoenix-animation/assets/base64/**"
+      - ".github/workflows/assemble-phoenix-design-images.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    if: ${{ !contains(github.event.head_commit.message, '[skip image assemble]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/phoenix-layered-animation-assets
+          fetch-depth: 0
+
+      - name: Decode image assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/phoenix-animation/assets
+          cat docs/phoenix-animation/assets/base64/assembly/part-*.txt | tr -d '\n\r' | base64 --decode > docs/phoenix-animation/assets/phoenix_assembly_reference.jpg
+          cat docs/phoenix-animation/assets/base64/boards/part-*.txt | tr -d '\n\r' | base64 --decode > docs/phoenix-animation/assets/phoenix_layer_and_motion_boards.jpg
+          file docs/phoenix-animation/assets/phoenix_assembly_reference.jpg
+          file docs/phoenix-animation/assets/phoenix_layer_and_motion_boards.jpg
+
+      - name: Commit decoded images
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/phoenix-animation/assets/phoenix_assembly_reference.jpg docs/phoenix-animation/assets/phoenix_layer_and_motion_boards.jpg
+          if git diff --cached --quiet; then
+            echo "No image changes"
+            exit 0
+          fi
+          git commit -m "Add Phoenix design images [skip image assemble]"
+          git push origin HEAD:design/phoenix-layered-animation-assets
