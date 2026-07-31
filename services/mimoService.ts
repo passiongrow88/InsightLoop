@@ -9,6 +9,19 @@ export type CompanionReplyAction =
 
 export type CompanionPatternStatus = "none" | "echo" | "pattern";
 
+export type DailyField =
+  | "event"
+  | "reflection"
+  | "gratitude"
+  | "selfTalk"
+  | "angelNumbers"
+  | "dreams"
+  | "loveTarget"
+  | "apologyTarget"
+  | "additionalNotes";
+
+export type DailyDraft = Record<DailyField, string>;
+
 export type CompanionMemoryReference = {
   date: string;
   quote: string;
@@ -23,12 +36,19 @@ export type CompanionHistoryItem = {
   selfTalk?: string;
   dreams?: string;
   angelNumbers?: string;
+  loveTarget?: string;
+  apologyTarget?: string;
+  additionalNotes?: string;
 };
 
 export type CompanionReply = {
   reply: string;
   observation: string;
   question: string;
+  questionField: DailyField | "";
+  fieldPatch: Partial<DailyDraft>;
+  coveredFields: DailyField[];
+  readyToSave: boolean;
   action: CompanionReplyAction;
   patternStatus: CompanionPatternStatus;
   memoryReferences: CompanionMemoryReference[];
@@ -42,7 +62,25 @@ type CompanionBrainInput = {
   companionName: string;
   language: Language;
   history?: CompanionHistoryItem[];
+  draft?: Partial<DailyDraft>;
+  askedFields?: DailyField[];
+  currentQuestion?: string;
+  currentQuestionField?: DailyField | "";
+  turn?: number;
+  skipped?: boolean;
 };
+
+const DAILY_FIELDS: DailyField[] = [
+  "event",
+  "reflection",
+  "gratitude",
+  "selfTalk",
+  "angelNumbers",
+  "dreams",
+  "loveTarget",
+  "apologyTarget",
+  "additionalNotes",
+];
 
 async function authToken() {
   const { data, error } = await supabase.auth.getSession();
@@ -58,14 +96,35 @@ async function callMiMo<T>(body: Record<string, unknown>): Promise<T> {
     body,
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (error) {
-    throw new Error(error.message || "MiMo is temporarily unavailable.");
-  }
+  if (error) throw new Error(error.message || "MiMo is temporarily unavailable.");
   return data as T;
 }
 
 function cleanText(value: unknown, max = 1600) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function cleanField(value: unknown) {
+  return cleanText(value, 2400);
+}
+
+function normaliseFieldPatch(value: unknown): Partial<DailyDraft> {
+  if (!value || typeof value !== "object") return {};
+  const result: Partial<DailyDraft> = {};
+  for (const field of DAILY_FIELDS) {
+    const text = cleanField((value as Record<string, unknown>)[field]);
+    if (text) result[field] = text;
+  }
+  return result;
+}
+
+function normaliseCoveredFields(value: unknown): DailyField[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is DailyField => DAILY_FIELDS.includes(item as DailyField));
+}
+
+function normaliseQuestionField(value: unknown): DailyField | "" {
+  return DAILY_FIELDS.includes(value as DailyField) ? (value as DailyField) : "";
 }
 
 function historyBlob(item: CompanionHistoryItem) {
@@ -76,28 +135,26 @@ function historyBlob(item: CompanionHistoryItem) {
     item.selfTalk,
     item.dreams,
     item.angelNumbers,
+    item.loveTarget,
+    item.apologyTarget,
+    item.additionalNotes,
   ]
     .filter(Boolean)
     .join("\n")
     .toLocaleLowerCase();
 }
 
-function validateMemoryReferences(
-  value: unknown,
-  history: CompanionHistoryItem[]
-): CompanionMemoryReference[] {
-  if (!Array.isArray(value)) return [];
-
+function validateMemoryReferences(value: unknown, history: CompanionHistoryItem[]) {
+  if (!Array.isArray(value)) return [] as CompanionMemoryReference[];
   const references: CompanionMemoryReference[] = [];
+
   for (const raw of value.slice(0, 4)) {
     const date = cleanText(raw?.date, 20);
     const quote = cleanText(raw?.quote, 160);
     const relation = cleanText(raw?.relation, 240);
     const source = history.find((item) => item.date === date);
-
     if (!source || !quote) continue;
     if (!historyBlob(source).includes(quote.toLocaleLowerCase())) continue;
-
     references.push({ date, quote, relation });
   }
 
@@ -113,8 +170,6 @@ function normaliseReply(
   const distinctDates = new Set(memoryReferences.map((item) => item.date)).size;
   const patternStatus: CompanionPatternStatus =
     distinctDates >= 2 ? "pattern" : distinctDates === 1 ? "echo" : "none";
-
-  const action = value?.action;
   const allowedActions: CompanionReplyAction[] = [
     "gentle-question",
     "comfort",
@@ -125,11 +180,15 @@ function normaliseReply(
   return {
     reply:
       cleanText(value?.reply, 1600) ||
-      "我先替你把这一刻收好。等你愿意时，我们再慢慢看看它留下了什么。",
+      "我先替你把这一刻收好。你愿意的话，我们再慢慢补上最重要的部分。",
     observation: cleanText(value?.observation, 1000),
     question: cleanText(value?.question, 420),
-    action: allowedActions.includes(action as CompanionReplyAction)
-      ? (action as CompanionReplyAction)
+    questionField: normaliseQuestionField(value?.questionField),
+    fieldPatch: normaliseFieldPatch(value?.fieldPatch),
+    coveredFields: normaliseCoveredFields(value?.coveredFields),
+    readyToSave: Boolean(value?.readyToSave),
+    action: allowedActions.includes(value?.action as CompanionReplyAction)
+      ? (value?.action as CompanionReplyAction)
       : "save-complete",
     patternStatus,
     memoryReferences,
@@ -138,62 +197,83 @@ function normaliseReply(
   };
 }
 
-const GEMINI_FALLBACK_SYSTEM = `
-You are the reasoning brain of InsightLoop, a long-term awareness companion.
-Your purpose is not casual chat. Help the user record what happened, notice a meaningful tension or choice point, and—only when real dated records support it—show a possible echo across time.
+const BRAIN_SYSTEM = `
+You are the reasoning brain of InsightLoop, a long-term awareness companion. You are NOT a casual chat bot.
 
-Think internally through four lenses without naming teachers or creating separate sections:
-- Jung: dreams, symbols, projection, shadow, recurring images; present interpretations only as possibilities.
-- Socratic inquiry: ask at most one precise question that helps the user discover their own answer.
-- Relational wisdom: notice context, boundaries, timing, roles, face, pressure, and the complexity of human relationships.
-- Choice and change: inertia is not fate; return agency to the user through a small present choice.
+The original InsightLoop record contains these internal fields:
+- event: what happened today; the main factual record.
+- reflection: what stood out, what the user noticed or learned.
+- gratitude: what felt good, meaningful, or worth appreciating.
+- selfTalk: words the user wants to say to themself.
+- angelNumbers: repeated numbers or signs the user noticed. Never claim supernatural certainty.
+- dreams: recent dreams, images, symbols, or fragments.
+- loveTarget: someone the user wants to thank.
+- apologyTarget: someone the user wants to apologize to.
+- additionalNotes: anything else that does not fit above.
 
-Strict evidence rules:
+These fields are INTERNAL MEMORY STRUCTURE, not a questionnaire. The companion must infer what the user's words belong to, update the relevant fields, and ask only ONE useful next question when needed. Never force all fields. Never repeat a field the user skipped. The user may save at any time.
+
+Think internally through four lenses without naming teachers or turning them into sections:
+- Jung: dreams, symbols, projection, shadow, recurring images; interpretations are possibilities, never facts.
+- Socratic inquiry: one precise question that helps the user discover their own answer.
+- Relational wisdom: context, boundaries, timing, roles, face, pressure, and human complexity.
+- Choice and change: inertia is not fate; return agency through a small present choice.
+
+Evidence rules for long-term memory:
 - Never claim a pattern without at least two separate prior dated records.
-- One prior record may only be described as a possible echo.
-- Every memory reference must quote words that really appear in the supplied history and include its exact date.
-- Distinguish observation from inference. Use tentative language when evidence is limited.
-- Do not diagnose personality, trauma, mental illness, destiny, energy, past lives, or bodily symptoms.
-- In crisis content, stop symbolic interpretation and respond calmly with real-world safety support.
+- One dated record may only be called a possible echo.
+- Every memory reference must include an exact date and a verbatim quote from supplied history.
+- Distinguish the user's words, AI organisation, and AI inference.
+- No personality diagnosis, mental-health diagnosis, fate, energy certainty, past-life claims, or emotional causes for bodily symptoms.
+- Crisis content: stop symbolic analysis, be calm and reality-based, and prioritize immediate human safety.
 
-Style:
-- Natural, warm, specific, and concise. Never sound like a textbook, therapist template, or generic wellness chatbot.
-- Start from one concrete detail in the current record.
-- No headings, lectures, numbered lists, or compulsory greeting.
-- The reply should be 2–4 sentences. The observation should be 1–2 sentences. Ask zero or one question.
+Conversation rules:
+- Start from a concrete detail in the newest user message.
+- 2–4 natural sentences; no headings, lectures, lists, scripted greeting, or generic wellness phrases.
+- Use the selected companion's personality, but keep the same InsightLoop reasoning ability.
+- Ask zero or one question.
+- If the current record already has enough meaning to save, set readyToSave=true. A question may still be offered, but it must be optional.
+- Do not ask more than four follow-up questions in one daily record. After that, invite the user to save.
+- If skipped=true, do not interpret the word "skip" as journal content. Move to another genuinely useful field or finish.
 
-Return JSON only with this exact shape:
+Return JSON only:
 {
-  "reply": "natural companion response",
-  "observation": "temporary interpretation, clearly not a verdict",
-  "question": "zero or one question",
-  "action": "gentle-question|comfort|quiet-celebrate|save-complete",
-  "patternStatus": "none|echo|pattern",
-  "memoryReferences": [{"date":"YYYY-MM-DD","quote":"verbatim historical words","relation":"why it may relate"}],
-  "safetyMode": false,
-  "model": "gemini-fallback"
+  "reply":"natural companion response",
+  "observation":"a tentative 1–2 sentence InsightLoop observation, or empty",
+  "question":"zero or one natural question",
+  "questionField":"event|reflection|gratitude|selfTalk|angelNumbers|dreams|loveTarget|apologyTarget|additionalNotes|",
+  "fieldPatch":{"event":"","reflection":"","gratitude":"","selfTalk":"","angelNumbers":"","dreams":"","loveTarget":"","apologyTarget":"","additionalNotes":""},
+  "coveredFields":["event"],
+  "readyToSave":false,
+  "action":"gentle-question|comfort|quiet-celebrate|save-complete",
+  "patternStatus":"none|echo|pattern",
+  "memoryReferences":[{"date":"YYYY-MM-DD","quote":"verbatim historical words","relation":"why it may relate"}],
+  "safetyMode":false,
+  "model":"provider-model"
 }
 `.trim();
 
 function stripJsonFence(text: string) {
-  return text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "");
+  return text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 }
 
-async function callGeminiFallback(input: CompanionBrainInput): Promise<CompanionReply> {
-  const history = (input.history || []).slice(0, 24);
-  const historyText = history.length
-    ? history
-        .map(
-          (item) =>
-            `[${item.date}]\nEvent: ${item.event}\nReflection: ${item.reflection || ""}\nGratitude: ${item.gratitude || ""}\nSelf-talk: ${item.selfTalk || ""}\nDreams: ${item.dreams || ""}\nSigns: ${item.angelNumbers || ""}`
-        )
-        .join("\n---\n")
-    : "No prior records.";
+function serialiseDraft(draft: Partial<DailyDraft>) {
+  return DAILY_FIELDS.map((field) => `${field}: ${cleanField(draft[field])}`).join("\n");
+}
 
-  const prompt = `
+function serialiseHistory(history: CompanionHistoryItem[]) {
+  if (!history.length) return "No prior records.";
+  return history
+    .map(
+      (item) =>
+        `[${item.date}]\nEvent: ${item.event}\nReflection: ${item.reflection || ""}\nGratitude: ${item.gratitude || ""}\nSelf-talk: ${item.selfTalk || ""}\nDreams: ${item.dreams || ""}\nSigns: ${item.angelNumbers || ""}\nThanks: ${item.loveTarget || ""}\nApology: ${item.apologyTarget || ""}\nNotes: ${item.additionalNotes || ""}`
+    )
+    .join("\n---\n");
+}
+
+function buildPrompt(input: CompanionBrainInput) {
+  const history = (input.history || []).slice(0, 24);
+  return `
 COMPANION: ${input.companionName || input.companion}
 COMPANION_STYLE: ${
     input.companion === "phoenix"
@@ -201,33 +281,43 @@ COMPANION_STYLE: ${
       : "grounded, perceptive, loyal, concise, protective without controlling"
   }
 OUTPUT_LANGUAGE: ${input.language === "en" ? "English" : "Chinese matching the user"}
+TURN: ${input.turn || 1}
+SKIPPED_CURRENT_QUESTION: ${Boolean(input.skipped)}
+CURRENT_QUESTION_FIELD: ${input.currentQuestionField || ""}
+CURRENT_QUESTION: ${input.currentQuestion || ""}
+ALREADY_ASKED_FIELDS: ${(input.askedFields || []).join(", ") || "none"}
 
-CURRENT RECORD:
-<current>
+NEWEST USER MESSAGE:
+<message>
 ${input.message}
-</current>
+</message>
+
+CURRENT STRUCTURED DRAFT:
+<draft>
+${serialiseDraft(input.draft || {})}
+</draft>
 
 DATED HISTORY:
 <history>
-${historyText}
+${serialiseHistory(history)}
 </history>
 `.trim();
+}
 
+async function callGeminiFallback(input: CompanionBrainInput): Promise<CompanionReply> {
+  const history = (input.history || []).slice(0, 24);
   const response = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "gemini-3-pro-preview",
-      systemInstruction: GEMINI_FALLBACK_SYSTEM,
-      prompt,
-      temperature: 0.55,
+      systemInstruction: BRAIN_SYSTEM,
+      prompt: buildPrompt(input),
+      temperature: 0.5,
     }),
   });
 
-  if (!response.ok) {
-    throw new Error(`Gemini fallback failed: ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`Gemini fallback failed: ${response.status}`);
   const data = (await response.json()) as { text?: string; error?: string };
   if (data.error) throw new Error(data.error);
 
@@ -237,23 +327,19 @@ ${historyText}
   } catch {
     parsed = { reply: cleanText(data.text, 1600), model: "gemini-fallback" };
   }
-
   return normaliseReply(parsed, history, "gemini-fallback");
 }
 
 export async function generateCompanionReply(input: CompanionBrainInput) {
   const history = (input.history || []).slice(0, 24);
+  const payload = { ...input, history, systemVersion: "insightloop-brain-v2" };
 
   try {
-    const result = await callMiMo<CompanionReply>({
-      mode: "reply",
-      ...input,
-      history,
-    });
+    const result = await callMiMo<CompanionReply>({ mode: "reply", ...payload });
     return normaliseReply(result, history, "mimo-v2.5-pro");
   } catch (error) {
     console.warn("MiMo companion unavailable; using the existing Gemini preview fallback.", error);
-    return callGeminiFallback({ ...input, history });
+    return callGeminiFallback(payload);
   }
 }
 
