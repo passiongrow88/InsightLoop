@@ -244,6 +244,13 @@ async function handleSpeech(req: VercelRequest, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method === "GET") {
+    return res.status(200).json({
+      service: "mimo",
+      configured: Boolean(process.env.MIMO_API_KEY),
+    });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
