@@ -26,7 +26,7 @@ const cleanHistory = (v: any): History[] => Array.isArray(v) ? v.slice(0, 30).ma
 const historyText = (h: History) => norm(fields.map(f => h[f]).join("\n"));
 
 function headers(origin: string | null) {
-  const ok = origin === "https://insightloop.lol" || origin === "https://www.insightloop.lol" || origin === "http://localhost:5173" || Boolean(origin?.endsWith(".vercel.app"));
+  const ok = origin === "https://insightloop.lol" || origin === "https://www.insightloop.lol" || origin === "http://localhost:5173" || (Boolean(origin?.endsWith(".vercel.app")) || origin === "https://raw.githack.com" || origin === "https://rawcdn.githack.com");
   return { "Access-Control-Allow-Origin": ok && origin ? origin : "https://insightloop.lol", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", Vary: "Origin" };
 }
 
