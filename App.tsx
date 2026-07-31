@@ -47,30 +47,18 @@ function toAppUser(authUser: { id: string; email?: string | null; user_metadata?
 }
 
 function App() {
-  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-  // App State
   const [currentView, setCurrentView] = useState<ViewType>("home");
   const [language, setLanguage] = useState<Language>("zh");
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
-
-  // Data State
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [goals, setGoals] = useState<ManifestationItem[]>([]);
-
-  // Loading & Initialization
   const [isAppReady, setIsAppReady] = useState(false);
-
-  // Paywall State
   const [paywall, setPaywall] = useState(false);
   const [paywallChecked, setPaywallChecked] = useState(false);
-
-  // Data loading indicator (avoid flashing empty lists)
   const [cloudLoaded, setCloudLoaded] = useState(false);
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite"));
 
-  // 1) Initial Load (CRITICAL: ONLY trust Supabase session, not localStorage session)
   useEffect(() => {
     const savedLang = localStorage.getItem("insightLoop_lang_global");
     if (savedLang) setLanguage(savedLang as Language);
@@ -94,19 +82,13 @@ function App() {
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      if (session?.user) {
-        setCurrentUser(toAppUser(session.user));
-      } else {
-        setCurrentUser(null);
-      }
+      if (session?.user) setCurrentUser(toAppUser(session.user));
+      else setCurrentUser(null);
     });
 
-    return () => {
-      sub.subscription.unsubscribe();
-    };
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  // 2) Load User Data when User Changes (NOW: from Supabase)
   useEffect(() => {
     if (!currentUser) {
       setEntries([]);
@@ -118,20 +100,16 @@ function App() {
     }
 
     setCloudLoaded(false);
-
     (async () => {
       try {
         const [journalRows, manifestRows] = await Promise.all([
           listEntries<JournalEntry>("journal"),
           listEntries<ManifestationItem>("manifestation"),
         ]);
-
         setEntries(journalRows || []);
         setGoals(manifestRows || []);
       } catch (e) {
         console.error("Error loading cloud data", e);
-
-        // Fallback: show local cache if any (NOT source of truth)
         const userKey = `insightLoop_data_${currentUser.email}`;
         const userDataStr = localStorage.getItem(userKey);
         if (userDataStr) {
@@ -148,24 +126,19 @@ function App() {
     })();
   }, [currentUser]);
 
-  // 3) Save lightweight cache (optional fallback, not source of truth)
   useEffect(() => {
     if (currentUser && isAppReady) {
       const userKey = `insightLoop_data_${currentUser.email}`;
-      const userData = { entries, goals, language };
-      localStorage.setItem(userKey, JSON.stringify(userData));
+      localStorage.setItem(userKey, JSON.stringify({ entries, goals, language }));
     }
   }, [entries, goals, currentUser, isAppReady, language]);
 
-  // 4) Persist Language Global Preference
   useEffect(() => {
     localStorage.setItem("insightLoop_lang_global", language);
   }, [language]);
 
-  // 5) Check Paywall (after login)
   useEffect(() => {
     if (!currentUser) return;
-
     (async () => {
       try {
         const ent = await getMyEntitlement();
@@ -179,14 +152,7 @@ function App() {
     })();
   }, [currentUser]);
 
-  // --- Actions ---
-
-  // IMPORTANT:
-  // Auth.tsx MUST do real Supabase sign-in.
-  // After sign-in, onAuthStateChange above will set currentUser automatically.
-  const handleLogin = (_user: User) => {
-    setCurrentView("home");
-  };
+  const handleLogin = (_user: User) => setCurrentView("home");
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -199,18 +165,15 @@ function App() {
   };
 
   const handleUpdateUser = (updatedUser: User) => {
-    // Keep in-memory user updated for UI fields (if any)
     setCurrentUser(updatedUser);
-
-    // Keep your old "users" cache if you still use it elsewhere
     const usersStr = localStorage.getItem("insightLoop_users");
     if (usersStr) {
       try {
         const users: User[] = JSON.parse(usersStr);
-        const newUsers = users.map((u) =>
-          u.email === updatedUser.email ? updatedUser : u
+        localStorage.setItem(
+          "insightLoop_users",
+          JSON.stringify(users.map((u) => (u.email === updatedUser.email ? updatedUser : u)))
         );
-        localStorage.setItem("insightLoop_users", JSON.stringify(newUsers));
       } catch {}
     }
   };
@@ -223,46 +186,29 @@ function App() {
         insightloop_companion_chosen_at: new Date().toISOString(),
       },
     });
-
-    if (error || !data.user) {
-      throw error || new Error("Could not save your companion choice.");
-    }
-
+    if (error || !data.user) throw error || new Error("Could not save your companion choice.");
     setCurrentUser(toAppUser(data.user));
   };
 
-  // --- Journal CRUD (write to Supabase) ---
-
   const handleAddEntry = async (entry: JournalEntry) => {
-    // optimistic UI
     setEntries((prev) => [entry, ...prev]);
     setCurrentView("history");
     setEditingEntry(null);
-
     try {
       const newId = await createEntry("journal", entry);
-      // ensure local state id matches DB id for later update/delete
-      setEntries((prev) =>
-        prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
-      );
+      setEntries((prev) => prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e)));
     } catch (e) {
       console.error("Create journal entry failed", e);
-      // rollback
       setEntries((prev) => prev.filter((x) => x !== entry));
       alert("保存失败：云端写入失败（请确认已登录且网络正常）");
     }
   };
 
-  // The daily surface must confirm a save in place. The legacy journal keeps its
-  // existing redirect to history; both paths still use the same cloud write logic.
   const handleAddDailyEntry = async (entry: JournalEntry): Promise<string> => {
     setEntries((prev) => [entry, ...prev]);
-
     try {
       const newId = await createEntry("journal", entry);
-      setEntries((prev) =>
-        prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
-      );
+      setEntries((prev) => prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e)));
       return newId;
     } catch (e) {
       console.error("Create daily journal entry failed", e);
@@ -274,21 +220,14 @@ function App() {
 
   const handleUpdateDailyEntry = async (updatedEntry: JournalEntry) => {
     if (!updatedEntry.id) throw new Error("Missing entry id");
-
-    setEntries((prev) =>
-      prev.map((entry) => (entry.id === updatedEntry.id ? updatedEntry : entry))
-    );
+    setEntries((prev) => prev.map((entry) => (entry.id === updatedEntry.id ? updatedEntry : entry)));
     await updateEntry(updatedEntry.id, "journal", updatedEntry);
   };
 
   const handleUpdateEntry = async (updatedEntry: JournalEntry) => {
-    // optimistic
-    setEntries((prev) =>
-      prev.map((e) => (e.id === updatedEntry.id ? updatedEntry : e))
-    );
+    setEntries((prev) => prev.map((e) => (e.id === updatedEntry.id ? updatedEntry : e)));
     setCurrentView("history");
     setEditingEntry(null);
-
     try {
       if (!updatedEntry.id) throw new Error("Missing entry id");
       await updateEntry(updatedEntry.id, "journal", updatedEntry);
@@ -301,12 +240,11 @@ function App() {
   const handleDeleteEntry = async (id: string) => {
     const snapshot = entries;
     setEntries((prev) => prev.filter((e) => e.id !== id));
-
     try {
       await deleteEntry(id, "journal");
     } catch (e) {
       console.error("Delete journal entry failed", e);
-      setEntries(snapshot); // rollback
+      setEntries(snapshot);
       alert("删除失败：云端删除失败（请刷新后重试）");
     }
   };
@@ -321,16 +259,11 @@ function App() {
     setCurrentView("history");
   };
 
-  // --- Manifestation CRUD (write to Supabase) ---
-
   const handleAddGoal = async (goal: ManifestationItem) => {
     setGoals((prev) => [goal, ...prev]);
-
     try {
       const newId = await createEntry("manifestation", goal);
-      setGoals((prev) =>
-        prev.map((g) => (g === goal ? { ...g, id: g.id ?? newId } : g))
-      );
+      setGoals((prev) => prev.map((g) => (g === goal ? { ...g, id: g.id ?? newId } : g)));
     } catch (e) {
       console.error("Create goal failed", e);
       setGoals((prev) => prev.filter((x) => x !== goal));
@@ -339,10 +272,7 @@ function App() {
   };
 
   const handleUpdateGoal = async (updatedGoal: ManifestationItem) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g))
-    );
-
+    setGoals((prev) => prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g)));
     try {
       if (!updatedGoal.id) throw new Error("Missing goal id");
       await updateEntry(updatedGoal.id, "manifestation", updatedGoal);
@@ -355,7 +285,6 @@ function App() {
   const handleDeleteGoal = async (id: string) => {
     const snapshot = goals;
     setGoals((prev) => prev.filter((g) => g.id !== id));
-
     try {
       await deleteEntry(id, "manifestation");
     } catch (e) {
@@ -370,59 +299,47 @@ function App() {
     setCurrentView(view);
   };
 
-  // --- Render ---
-
   if (!isAppReady) return null;
+  if (!currentUser) return <Auth onLogin={handleLogin} language={language} setLanguage={setLanguage} />;
 
-  if (!currentUser) {
+  if (inviteToken) {
     return (
-      <Auth onLogin={handleLogin} language={language} setLanguage={setLanguage} />
+      <FounderInvitation
+        token={inviteToken}
+        language={language}
+        onComplete={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("invite");
+          window.history.replaceState({}, "", url);
+          setInviteToken(null);
+          setCurrentView("home");
+        }}
+      />
     );
   }
 
-  if (inviteToken) {
-    return <FounderInvitation
-      token={inviteToken}
-      language={language}
-      onComplete={() => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("invite");
-        window.history.replaceState({}, "", url);
-        setInviteToken(null);
-        setCurrentView("home");
-      }}
-    />;
-  }
-
-  // A companion is an account-level choice, saved in Supabase Auth metadata.
-  // It must be completed before the daily surface can load, so users cannot
-  // accidentally see one companion and later be assigned the other.
   if (!currentUser.companion) {
     return <CompanionOnboarding language={language} onComplete={handleCompanionComplete} />;
   }
-
-  // Wait paywall check (avoid flashing UI)
   if (!paywallChecked) return null;
-
-  // Paywall block
   if (paywall) return <Paywall />;
-
-  // Optional: wait cloud load once after login (prevents "empty flash")
   if (!cloudLoaded) return null;
+
+  const dailyRecord = (
+    <DailyRecord
+      onAddEntry={handleAddDailyEntry}
+      onUpdateEntry={handleUpdateDailyEntry}
+      entries={entries}
+      companion={currentUser.companion}
+      companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
+      language={language}
+    />
+  );
 
   const renderContent = () => {
     switch (currentView) {
       case "home":
-        return (
-          <DailyRecord
-            onAddEntry={handleAddDailyEntry}
-            onUpdateEntry={handleUpdateDailyEntry}
-            companion={currentUser.companion!}
-            companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
-            language={language}
-          />
-        );
-
+        return dailyRecord;
       case "journal":
         return (
           <Journal
@@ -437,7 +354,6 @@ function App() {
             currentUser={currentUser}
           />
         );
-
       case "manifestation":
         return (
           <Manifestation
@@ -450,7 +366,6 @@ function App() {
             currentUser={currentUser}
           />
         );
-
       case "history":
         return (
           <Journal
@@ -463,31 +378,14 @@ function App() {
             onEditEntry={handleEditEntry}
           />
         );
-
       case "billing":
         return <Billing language={language} />;
-
       case "member-space":
-        return (
-          <MemberSpace
-            language={language}
-            setCurrentView={handleSetCurrentView}
-          />
-        );
-
+        return <MemberSpace language={language} setCurrentView={handleSetCurrentView} />;
       case "admin":
         return <AdminConsole language={language} />;
-
       default:
-        return (
-          <DailyRecord
-            onAddEntry={handleAddDailyEntry}
-            onUpdateEntry={handleUpdateDailyEntry}
-            companion={currentUser.companion!}
-            companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
-            language={language}
-          />
-        );
+        return dailyRecord;
     }
   };
 
