@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { requestUser } from "./_lib/auth";
+import { requestUser } from "./_lib/auth.js";
 
 type CompanionId = "phoenix" | "thunder";
 type CompanionAction =
