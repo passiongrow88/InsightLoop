@@ -21,8 +21,8 @@ const ACTION_LABEL: Record<MascotAction, string> = {
 
 /**
  * Mascot media contract:
- * public/mascots/{phoenix|thunder}/{action}.webm
- * Each file must be a transparent WebM (VP9 + alpha), not the original green-screen export.
+ * public/mascots/{phoenix|thunder}/{action}.webp
+ * Each file must be a transparent animated WebP, not the original green-screen export.
  */
 function MascotStage({ action, companion, companionName }: { action: MascotAction; companion: CompanionId; companionName: string }) {
   return (

@@ -44,24 +44,13 @@ const companionFallback = {
   thunder: { mark: "ϟ", color: "from-sky-300 via-indigo-300 to-violet-300", name: "小雷公" },
 } as const;
 
-const previewMascotBase =
-  "https://raw.githubusercontent.com/passiongrow88/InsightLoop/9151601c789a02db9ae3638e3bf411e1c65be130/public/mascots";
-
 function mascotSource(path: string) {
   const configuredBase = import.meta.env.VITE_MASCOT_BASE_URL?.replace(/\/$/, "");
   if (configuredBase) return `${configuredBase}/${path}`;
-
-  // Keep the real production domain self-contained. Preview deployments load
-  // the same immutable media commit from GitHub so the Vercel source upload
-  // stays below its 4 MB connector limit.
-  const host = window.location.hostname;
-  const base = host === "insightloop.lol" || host === "www.insightloop.lol"
-    ? "/mascots"
-    : previewMascotBase;
-  return `${base}/${path}`;
+  return `/mascots/${path}`;
 }
 
-function VideoOrFallback({
+function AnimationOrFallback({
   source,
   className = "",
   loop = true,
@@ -77,9 +66,19 @@ function VideoOrFallback({
   companion: CompanionId;
 }) {
   const [available, setAvailable] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const fallback = companionFallback[companion];
 
-  useEffect(() => setAvailable(true), [source]);
+  useEffect(() => {
+    setAvailable(true);
+    setLoaded(false);
+  }, [source]);
+
+  useEffect(() => {
+    if (loop || !onEnded || !available || !loaded) return;
+    const timer = window.setTimeout(onEnded, 5100);
+    return () => window.clearTimeout(timer);
+  }, [available, loaded, loop, onEnded, source]);
 
   if (!available) {
     return (
@@ -93,33 +92,30 @@ function VideoOrFallback({
   }
 
   return (
-    <video
+    <img
       key={source}
-      autoPlay
-      muted
-      playsInline
-      loop={loop}
-      preload="metadata"
+      src={source}
+      alt={label || fallback.name}
+      decoding="async"
+      draggable={false}
       aria-label={label || fallback.name}
       className={`object-contain ${className}`}
-      onEnded={onEnded}
+      onLoad={() => setLoaded(true)}
       onError={() => setAvailable(false)}
-    >
-      <source src={source} type="video/webm" />
-    </video>
+    />
   );
 }
 
 /**
- * Only transparent WebM derivatives belong in public/mascots. Original MP4s
- * stay outside the web bundle. The visual fallback is intentional: it avoids
- * pretending that a state animation is present when an asset fails to load.
+ * Only transparent animated WebP derivatives belong in public/mascots.
+ * Original green-screen MP4s stay outside the web bundle. Animated WebP is
+ * used here because browser rendering preserves its alpha channel reliably.
  */
 export function CompanionMedia({ companion, action, ...props }: CompanionMediaProps) {
   return (
-    <VideoOrFallback
+    <AnimationOrFallback
       companion={companion}
-      source={mascotSource(`${companion}/${action}.webm`)}
+      source={mascotSource(`${companion}/${action}.webp`)}
       {...props}
     />
   );
@@ -127,9 +123,9 @@ export function CompanionMedia({ companion, action, ...props }: CompanionMediaPr
 
 export function EggMedia({ companion, action, ...props }: EggMediaProps) {
   return (
-    <VideoOrFallback
+    <AnimationOrFallback
       companion={companion}
-      source={mascotSource(`eggs/${companion}-${action}.webm`)}
+      source={mascotSource(`eggs/${companion}-${action}.webp`)}
       {...props}
     />
   );
