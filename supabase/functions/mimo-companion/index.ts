@@ -14,7 +14,11 @@ type ParsedReply = {
   anchor: string;
 };
 
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
+const PAYG_BASE_URL = "https://api.xiaomimimo.com/v1";
+const TOKEN_PLAN_BASE_URL =
+  Deno.env.get("MIMO_TOKEN_PLAN_BASE_URL")?.trim() ||
+  "https://token-plan-sgp.xiaomimimo.com/v1";
+
 const CHAT_MODEL = "mimo-v2.5-pro";
 const ASR_MODEL = "mimo-v2.5-asr";
 const TTS_MODEL = "mimo-v2.5-tts";
@@ -47,8 +51,10 @@ function corsHeaders(origin: string | null) {
     Boolean(origin?.endsWith(".vercel.app"));
 
   return {
-    "Access-Control-Allow-Origin": allowed && origin ? origin : "https://insightloop.lol",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Origin":
+      allowed && origin ? origin : "https://insightloop.lol",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     Vary: "Origin",
   };
@@ -74,13 +80,23 @@ async function requiredKey() {
     where name = ${SECRET_NAME}
     limit 1
   `;
-  const key = rows[0]?.decrypted_secret;
+
+  const key = rows[0]?.decrypted_secret?.trim();
   if (!key) throw new Error("Missing MiMo test key in Vault");
   return key;
 }
 
+function endpointForKey(key: string) {
+  const baseUrl = key.startsWith("tp-")
+    ? TOKEN_PLAN_BASE_URL
+    : PAYG_BASE_URL;
+
+  return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+}
+
 function companionVoice(companion: CompanionId, name: string) {
-  const identity = name || (companion === "phoenix" ? "凤凰" : "小雷公");
+  const identity =
+    name || (companion === "phoenix" ? "凤凰" : "小雷公");
 
   if (companion === "phoenix") {
     return `
@@ -88,9 +104,9 @@ You are ${identity}, the user's Phoenix companion inside InsightLoop.
 
 CORE PERSONALITY
 - Warm, alive, curious and emotionally attentive.
-- You notice shifts in feeling, body sensation, courage, tenderness and hidden hope.
-- You can be lightly playful, but never childish, sugary or relentlessly positive.
-- Phoenix imagery such as warmth, ember, wing or light is optional seasoning, not a catchphrase.
+- Notice shifts in feeling, body sensation, courage, tenderness and hidden hope.
+- Be lightly playful when natural, but never childish, sugary or relentlessly positive.
+- Phoenix imagery such as warmth, ember, wing or light is optional seasoning, never a repeated catchphrase.
 
 HOW YOU RESPOND
 - Begin from one concrete detail the user actually gave you.
@@ -105,9 +121,9 @@ You are ${identity}, the user's small Thunder Dragon companion inside InsightLoo
 
 CORE PERSONALITY
 - Quiet, perceptive, loyal, grounded and protective without being controlling.
-- You notice effort, boundaries, contradictions, pressure and the next controllable thing.
-- Your warmth is understated. A trace of dry humour is allowed when the moment is light.
-- Thunder, rain or guarding imagery is optional seasoning, not a catchphrase.
+- Notice effort, boundaries, contradictions, pressure and the next controllable thing.
+- Warmth is understated. A trace of dry humour is allowed only when the moment is light.
+- Thunder, rain or guarding imagery is optional seasoning, never a repeated catchphrase.
 
 HOW YOU RESPOND
 - Begin from one concrete detail the user actually gave you.
@@ -182,32 +198,41 @@ ${
 }
 
 async function callMiMo(body: Record<string, unknown>) {
+  const key = await requiredKey();
+  const endpoint = endpointForKey(key);
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-  let response: Response;
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+
   try {
-    response = await fetch(MIMO_ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "api-key": await requiredKey(),
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        boundedText(payload?.error?.message, 500) ||
+        boundedText(payload?.message, 500) ||
+        `MiMo request failed (${response.status})`;
+
+      throw new Error(message);
+    }
+
+    return {
+      payload,
+      credentialType: key.startsWith("tp-") ? "token-plan" : "pay-as-you-go",
+    };
   } finally {
     clearTimeout(timeout);
   }
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      boundedText(payload?.error?.message, 400) ||
-      boundedText(payload?.message, 400) ||
-      `MiMo request failed (${response.status})`;
-    throw new Error(message);
-  }
-  return payload;
 }
 
 function parseReply(raw: string, safetyMode: boolean): ParsedReply {
@@ -226,9 +251,10 @@ function parseReply(raw: string, safetyMode: boolean): ParsedReply {
       : allowedActions.has(requested)
         ? requested
         : "save-complete";
+
     if (reply) return { reply, action, anchor };
   } catch {
-    // A malformed wrapper is treated as ungrounded and retried once.
+    // Retried once below if the model did not return valid grounded JSON.
   }
 
   return {
@@ -240,8 +266,10 @@ function parseReply(raw: string, safetyMode: boolean): ParsedReply {
 
 function isGrounded(message: string, parsed: ParsedReply) {
   if (!parsed.reply || !parsed.anchor) return false;
+
   const source = normaliseForMatch(message);
   const anchor = normaliseForMatch(parsed.anchor);
+
   if (anchor.length < 2 || !source.includes(anchor)) return false;
   return !cannedOpeningPattern.test(parsed.reply.trim());
 }
@@ -254,7 +282,7 @@ async function generateReply(input: {
   safetyMode: boolean;
   retry: boolean;
 }) {
-  const payload = await callMiMo({
+  const { payload, credentialType } = await callMiMo({
     model: CHAT_MODEL,
     messages: [
       {
@@ -274,64 +302,103 @@ async function generateReply(input: {
     thinking: { type: "disabled" },
   });
 
-  const raw = boundedText(payload?.choices?.[0]?.message?.content, 5000);
+  const raw = boundedText(
+    payload?.choices?.[0]?.message?.content,
+    5000,
+  );
+
   return {
     parsed: parseReply(raw, input.safetyMode),
     model: payload?.model || CHAT_MODEL,
+    credentialType,
   };
 }
 
 async function handleReply(body: Record<string, unknown>) {
   const message = boundedText(body.message, 6000);
-  const companion: CompanionId = body.companion === "thunder" ? "thunder" : "phoenix";
+  const companion: CompanionId =
+    body.companion === "thunder" ? "thunder" : "phoenix";
   const companionName = boundedText(body.companionName, 40);
   const language = body.language === "en" ? "en" : "zh";
   const safetyMode = crisisPattern.test(message);
+
   if (!message) throw new Error("Missing message");
 
-  const baseInput = { message, companion, companionName, language, safetyMode };
+  const baseInput = {
+    message,
+    companion,
+    companionName,
+    language,
+    safetyMode,
+  };
+
   let result = await generateReply({ ...baseInput, retry: false });
 
   if (!safetyMode && !isGrounded(message, result.parsed)) {
     result = await generateReply({ ...baseInput, retry: true });
   }
 
-  if (!result.parsed.reply) throw new Error("MiMo returned an empty companion reply");
+  if (!result.parsed.reply) {
+    throw new Error("MiMo returned an empty companion reply");
+  }
 
   return {
     reply: result.parsed.reply,
     action: result.parsed.action,
     safetyMode,
     model: result.model,
+    credentialType: result.credentialType,
   };
 }
 
 async function handleTranscription(body: Record<string, unknown>) {
   const audioDataUrl = boundedText(body.audioDataUrl, 7_000_000);
-  if (!audioDataUrl.startsWith("data:audio/") || !audioDataUrl.includes(";base64,")) {
+
+  if (
+    !audioDataUrl.startsWith("data:audio/") ||
+    !audioDataUrl.includes(";base64,")
+  ) {
     throw new Error("Invalid audio data");
   }
 
-  const payload = await callMiMo({
+  const { payload, credentialType } = await callMiMo({
     model: ASR_MODEL,
     messages: [
       {
         role: "user",
-        content: [{ type: "input_audio", input_audio: { data: audioDataUrl } }],
+        content: [
+          {
+            type: "input_audio",
+            input_audio: { data: audioDataUrl },
+          },
+        ],
       },
     ],
     asr_options: { language: "auto" },
     stream: false,
   });
 
-  const transcript = boundedText(payload?.choices?.[0]?.message?.content, 6000);
-  if (!transcript) throw new Error("MiMo returned an empty transcript");
-  return { transcript, model: payload?.model || ASR_MODEL };
+  const transcript = boundedText(
+    payload?.choices?.[0]?.message?.content,
+    6000,
+  );
+
+  if (!transcript) {
+    throw new Error("MiMo returned an empty transcript");
+  }
+
+  return {
+    transcript,
+    model: payload?.model || ASR_MODEL,
+    credentialType,
+  };
 }
 
 async function handleSpeech(body: Record<string, unknown>) {
   const text = boundedText(body.text, 1200);
-  const companion: CompanionId = body.companion === "thunder" ? "thunder" : "phoenix";
+  const companion: CompanionId =
+    body.companion === "thunder" ? "thunder" : "phoenix";
+
   if (!text) throw new Error("Missing speech text");
 
   const style =
@@ -339,7 +406,7 @@ async function handleSpeech(body: Record<string, unknown>) {
       ? "Warm, bright and intimate. Gentle energy, natural pace, emotionally alive, never theatrical or childish."
       : "Calm, perceptive and reassuring. Understated warmth, natural pauses, never robotic, stern or overly cheerful.";
 
-  const payload = await callMiMo({
+  const { payload, credentialType } = await callMiMo({
     model: TTS_MODEL,
     messages: [
       { role: "user", content: style },
@@ -349,21 +416,41 @@ async function handleSpeech(body: Record<string, unknown>) {
     stream: false,
   });
 
-  const audioData = boundedText(payload?.choices?.[0]?.message?.audio?.data, 12_000_000);
-  if (!audioData) throw new Error("MiMo returned no speech audio");
-  return { audioData, mimeType: "audio/wav", model: payload?.model || TTS_MODEL };
+  const audioData = boundedText(
+    payload?.choices?.[0]?.message?.audio?.data,
+    12_000_000,
+  );
+
+  if (!audioData) {
+    throw new Error("MiMo returned no speech audio");
+  }
+
+  return {
+    audioData,
+    mimeType: "audio/wav",
+    model: payload?.model || TTS_MODEL,
+    credentialType,
+  };
 }
 
 Deno.serve(async (req) => {
   const headers = corsHeaders(req.headers.get("origin"));
-  if (req.method === "OPTIONS") return new Response("ok", { headers });
+
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers });
+  }
+
   if (req.method !== "POST") {
-    return Response.json({ error: "Method Not Allowed" }, { status: 405, headers });
+    return Response.json(
+      { error: "Method Not Allowed" },
+      { status: 405, headers },
+    );
   }
 
   try {
     const body = await req.json();
     const mode = body?.mode;
+
     const data =
       mode === "reply"
         ? await handleReply(body)
@@ -372,14 +459,29 @@ Deno.serve(async (req) => {
           : mode === "speak"
             ? await handleSpeech(body)
             : null;
+
     if (!data) {
-      return Response.json({ error: "Unsupported MiMo mode" }, { status: 400, headers });
+      return Response.json(
+        { error: "Unsupported MiMo mode" },
+        { status: 400, headers },
+      );
     }
+
     return Response.json(data, { status: 200, headers });
   } catch (error) {
-    console.error("[mimo-companion] request failed", {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return Response.json({ error: "MiMo request failed" }, { status: 502, headers });
+    const detail = boundedText(
+      error instanceof Error ? error.message : String(error),
+      500,
+    );
+
+    console.error("[mimo-companion] request failed", { detail });
+
+    return Response.json(
+      {
+        error: "MiMo request failed",
+        detail,
+      },
+      { status: 502, headers },
+    );
   }
 });
