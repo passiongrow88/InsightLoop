@@ -255,7 +255,7 @@ function App() {
 
   // The daily surface must confirm a save in place. The legacy journal keeps its
   // existing redirect to history; both paths still use the same cloud write logic.
-  const handleAddDailyEntry = async (entry: JournalEntry) => {
+  const handleAddDailyEntry = async (entry: JournalEntry): Promise<string> => {
     setEntries((prev) => [entry, ...prev]);
 
     try {
@@ -263,12 +263,22 @@ function App() {
       setEntries((prev) =>
         prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
       );
+      return newId;
     } catch (e) {
       console.error("Create daily journal entry failed", e);
       setEntries((prev) => prev.filter((x) => x !== entry));
       alert("保存失败：云端写入失败（请确认已登录且网络正常）");
       throw e;
     }
+  };
+
+  const handleUpdateDailyEntry = async (updatedEntry: JournalEntry) => {
+    if (!updatedEntry.id) throw new Error("Missing entry id");
+
+    setEntries((prev) =>
+      prev.map((entry) => (entry.id === updatedEntry.id ? updatedEntry : entry))
+    );
+    await updateEntry(updatedEntry.id, "journal", updatedEntry);
   };
 
   const handleUpdateEntry = async (updatedEntry: JournalEntry) => {
@@ -406,8 +416,10 @@ function App() {
         return (
           <DailyRecord
             onAddEntry={handleAddDailyEntry}
+            onUpdateEntry={handleUpdateDailyEntry}
             companion={currentUser.companion!}
             companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
+            language={language}
           />
         );
 
@@ -470,8 +482,10 @@ function App() {
         return (
           <DailyRecord
             onAddEntry={handleAddDailyEntry}
+            onUpdateEntry={handleUpdateDailyEntry}
             companion={currentUser.companion!}
             companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
+            language={language}
           />
         );
     }
