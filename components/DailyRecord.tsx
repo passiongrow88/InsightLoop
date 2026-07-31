@@ -352,7 +352,7 @@ export default function DailyRecord({
     setReadyToSave(result.readyToSave || turn >= 3 || !result.question);
 
     if (result.questionField) {
-      setAskedFields((current) => Array.from(new Set([...current, result.questionField])));
+      setAskedFields((current) => Array.from(new Set<DailyField>([...current, result.questionField as DailyField])));
     }
 
     if (result.patternStatus === "pattern") setAction("pattern-found");
