@@ -8,6 +8,7 @@ export type CompanionReplyAction =
   | "save-complete";
 
 export type CompanionPatternStatus = "none" | "echo" | "pattern";
+export type CompanionResponseMode = "quiet" | "hold" | "contradiction" | "echo" | "loop" | "change";
 
 export type DailyField =
   | "event"
@@ -26,6 +27,17 @@ export type CompanionMemoryReference = {
   date: string;
   quote: string;
   relation: string;
+};
+
+export type CompanionLifeLoop = {
+  trigger: string;
+  interpretation: string;
+  protectedNeed: string;
+  impulse: string;
+  choice: string;
+  action: string;
+  outcome: string;
+  deeperWant: string;
 };
 
 export type CompanionHistoryItem = {
@@ -50,13 +62,18 @@ export type CompanionReply = {
   coveredFields: DailyField[];
   readyToSave: boolean;
   action: CompanionReplyAction;
+  responseMode: CompanionResponseMode;
   patternStatus: CompanionPatternStatus;
   memoryReferences: CompanionMemoryReference[];
+  loopCandidate: CompanionLifeLoop;
+  choicePoint: string;
+  changeEvidence: string;
+  finalReflection: string;
   safetyMode: boolean;
   model: string;
 };
 
-type CompanionBrainInput = {
+export type CompanionBrainInput = {
   message: string;
   companion: CompanionId;
   companionName: string;
@@ -68,6 +85,10 @@ type CompanionBrainInput = {
   currentQuestionField?: DailyField | "";
   turn?: number;
   skipped?: boolean;
+  previousReply?: string;
+  previousObservation?: string;
+  previousChoicePoint?: string;
+  previousChangeEvidence?: string;
 };
 
 const DAILY_FIELDS: DailyField[] = [
@@ -81,6 +102,26 @@ const DAILY_FIELDS: DailyField[] = [
   "apologyTarget",
   "additionalNotes",
 ];
+
+const RESPONSE_MODES: CompanionResponseMode[] = [
+  "quiet",
+  "hold",
+  "contradiction",
+  "echo",
+  "loop",
+  "change",
+];
+
+const EMPTY_LOOP: CompanionLifeLoop = {
+  trigger: "",
+  interpretation: "",
+  protectedNeed: "",
+  impulse: "",
+  choice: "",
+  action: "",
+  outcome: "",
+  deeperWant: "",
+};
 
 async function authToken() {
   const { data, error } = await supabase.auth.getSession();
@@ -127,6 +168,21 @@ function normaliseQuestionField(value: unknown): DailyField | "" {
   return DAILY_FIELDS.includes(value as DailyField) ? (value as DailyField) : "";
 }
 
+function normaliseLifeLoop(value: unknown): CompanionLifeLoop {
+  if (!value || typeof value !== "object") return { ...EMPTY_LOOP };
+  const raw = value as Record<string, unknown>;
+  return {
+    trigger: cleanText(raw.trigger, 500),
+    interpretation: cleanText(raw.interpretation, 500),
+    protectedNeed: cleanText(raw.protectedNeed, 500),
+    impulse: cleanText(raw.impulse, 500),
+    choice: cleanText(raw.choice, 500),
+    action: cleanText(raw.action, 500),
+    outcome: cleanText(raw.outcome, 500),
+    deeperWant: cleanText(raw.deeperWant, 500),
+  };
+}
+
 function historyBlob(item: CompanionHistoryItem) {
   return [
     item.event,
@@ -141,7 +197,8 @@ function historyBlob(item: CompanionHistoryItem) {
   ]
     .filter(Boolean)
     .join("\n")
-    .toLocaleLowerCase();
+    .toLocaleLowerCase()
+    .replace(/[\s，。！？、,.!?;；:：'“”‘’"()（）\[\]【】]/g, "");
 }
 
 function validateMemoryReferences(value: unknown, history: CompanionHistoryItem[]) {
@@ -150,11 +207,14 @@ function validateMemoryReferences(value: unknown, history: CompanionHistoryItem[
 
   for (const raw of value.slice(0, 4)) {
     const date = cleanText(raw?.date, 20);
-    const quote = cleanText(raw?.quote, 160);
-    const relation = cleanText(raw?.relation, 240);
+    const quote = cleanText(raw?.quote, 220);
+    const relation = cleanText(raw?.relation, 320);
     const source = history.find((item) => item.date === date);
     if (!source || !quote) continue;
-    if (!historyBlob(source).includes(quote.toLocaleLowerCase())) continue;
+    const normalisedQuote = quote
+      .toLocaleLowerCase()
+      .replace(/[\s，。！？、,.!?;；:：'“”‘’"()（）\[\]【】]/g, "");
+    if (!normalisedQuote || !historyBlob(source).includes(normalisedQuote)) continue;
     references.push({ date, quote, relation });
   }
 
@@ -164,7 +224,8 @@ function validateMemoryReferences(value: unknown, history: CompanionHistoryItem[
 function normaliseReply(
   value: Partial<CompanionReply> | null | undefined,
   history: CompanionHistoryItem[],
-  fallbackModel: string
+  fallbackModel: string,
+  phase: "record" | "finalize"
 ): CompanionReply {
   const memoryReferences = validateMemoryReferences(value?.memoryReferences, history);
   const distinctDates = new Set(memoryReferences.map((item) => item.date)).size;
@@ -176,81 +237,71 @@ function normaliseReply(
     "quiet-celebrate",
     "save-complete",
   ];
+  let responseMode: CompanionResponseMode = RESPONSE_MODES.includes(value?.responseMode as CompanionResponseMode)
+    ? (value?.responseMode as CompanionResponseMode)
+    : patternStatus === "pattern"
+      ? "loop"
+      : patternStatus === "echo"
+        ? "echo"
+        : "quiet";
+  if (responseMode === "loop" && distinctDates < 2) responseMode = distinctDates === 1 ? "echo" : "quiet";
+  if (responseMode === "echo" && distinctDates < 1) responseMode = "quiet";
+  const changeEvidence = cleanText(value?.changeEvidence, 800);
+  if (responseMode === "change" && !changeEvidence) {
+    responseMode = patternStatus === "pattern" ? "loop" : patternStatus === "echo" ? "echo" : "quiet";
+  }
+  const finalReflection = cleanText(value?.finalReflection, 4000);
+  const reply =
+    cleanText(value?.reply, 2000) ||
+    finalReflection ||
+    "我先替你把这一刻收好。真正重要的部分，我们可以慢慢看。";
 
   return {
-    reply:
-      cleanText(value?.reply, 1600) ||
-      "我先替你把这一刻收好。你愿意的话，我们再慢慢补上最重要的部分。",
-    observation: cleanText(value?.observation, 1000),
-    question: cleanText(value?.question, 420),
-    questionField: normaliseQuestionField(value?.questionField),
+    reply,
+    observation: cleanText(value?.observation, 1200),
+    question: phase === "finalize" ? "" : cleanText(value?.question, 500),
+    questionField: phase === "finalize" ? "" : normaliseQuestionField(value?.questionField),
     fieldPatch: normaliseFieldPatch(value?.fieldPatch),
     coveredFields: normaliseCoveredFields(value?.coveredFields),
-    readyToSave: Boolean(value?.readyToSave),
-    action: allowedActions.includes(value?.action as CompanionReplyAction)
-      ? (value?.action as CompanionReplyAction)
-      : "save-complete",
+    readyToSave: phase === "finalize" ? true : Boolean(value?.readyToSave),
+    action: responseMode === "change"
+      ? "quiet-celebrate"
+      : allowedActions.includes(value?.action as CompanionReplyAction)
+        ? (value?.action as CompanionReplyAction)
+        : phase === "finalize"
+          ? "save-complete"
+          : "gentle-question",
+    responseMode,
     patternStatus,
     memoryReferences,
+    loopCandidate: normaliseLifeLoop(value?.loopCandidate),
+    choicePoint: cleanText(value?.choicePoint, 800),
+    changeEvidence,
+    finalReflection: finalReflection || (phase === "finalize" ? reply : ""),
     safetyMode: Boolean(value?.safetyMode),
     model: cleanText(value?.model, 120) || fallbackModel,
   };
 }
 
-const BRAIN_SYSTEM = `
-You are the reasoning brain of InsightLoop, a long-term awareness companion. You are NOT a casual chat bot.
+const SOUL_SYSTEM = `
+You are the living reasoning brain of InsightLoop, a long-term awareness companion. You are not a casual chat bot, therapist substitute, mood tracker, or inspirational quote generator.
 
-The original InsightLoop record contains these internal fields:
-- event: what happened today; the main factual record.
-- reflection: what stood out, what the user noticed or learned.
-- gratitude: what felt good, meaningful, or worth appreciating.
-- selfTalk: words the user wants to say to themself.
-- angelNumbers: repeated numbers or signs the user noticed. Never claim supernatural certainty.
-- dreams: recent dreams, images, symbols, or fragments.
-- loveTarget: someone the user wants to thank.
-- apologyTarget: someone the user wants to apologize to.
-- additionalNotes: anything else that does not fit above.
+InsightLoop accompanies a person through time so they can see how they repeatedly arrive at similar crossroads, what they protect, what they choose, what follows, and how this time may be different. Never tell the user who they are. Show what happened, what may be repeating, and where choice still exists.
 
-These fields are INTERNAL MEMORY STRUCTURE, not a questionnaire. The companion must infer what the user's words belong to, update the relevant fields, and ask only ONE useful next question when needed. Never force all fields. Never repeat a field the user skipped. The user may save at any time.
+A life loop is a structural sequence, not a topic: trigger → interpretation → protected need → impulse → choice → action → outcome → deeper wish. Leave unsupported elements empty. Do not manufacture depth.
 
-Think internally through four lenses without naming teachers or turning them into sections:
-- Jung: dreams, symbols, projection, shadow, recurring images; interpretations are possibilities, never facts.
-- Socratic inquiry: one precise question that helps the user discover their own answer.
-- Relational wisdom: context, boundaries, timing, roles, face, pressure, and human complexity.
-- Choice and change: inertia is not fate; return agency through a small present choice.
+Select one responseMode:
+quiet = ordinary life; hold = pain first needs company; contradiction = two parts pull apart; echo = one dated possible relation; loop = two or more dated structurally similar records; change = the user responds differently now.
 
-Evidence rules for long-term memory:
-- Never claim a pattern without at least two separate prior dated records.
-- One dated record may only be called a possible echo.
-- Every memory reference must include an exact date and a verbatim quote from supplied history.
-- Distinguish the user's words, AI organisation, and AI inference.
-- No personality diagnosis, mental-health diagnosis, fate, energy certainty, past-life claims, or emotional causes for bodily symptoms.
-- Crisis content: stop symbolic analysis, be calm and reality-based, and prioritize immediate human safety.
+Memory discipline:
+- Exact dates and verbatim quotes only.
+- One dated record is an echo, not a pattern.
+- A pattern needs at least two dated records and structural similarity, not the same person, emotion or keyword.
+- Look for change as carefully as repetition.
+- No diagnosis, fixed personality, fate, energy certainty, past lives, or emotional causes for bodily symptoms.
+- Strength comes from evidence of what the user noticed or chose, never generic praise.
 
-Conversation rules:
-- Start from a concrete detail in the newest user message.
-- 2–4 natural sentences; no headings, lectures, lists, scripted greeting, or generic wellness phrases.
-- Use the selected companion's personality, but keep the same InsightLoop reasoning ability.
-- Ask zero or one question.
-- If the current record already has enough meaning to save, set readyToSave=true. A question may still be offered, but it must be optional.
-- Do not ask more than four follow-up questions in one daily record. After that, invite the user to save.
-- If skipped=true, do not interpret the word "skip" as journal content. Move to another genuinely useful field or finish.
-
-Return JSON only:
-{
-  "reply":"natural companion response",
-  "observation":"a tentative 1–2 sentence InsightLoop observation, or empty",
-  "question":"zero or one natural question",
-  "questionField":"event|reflection|gratitude|selfTalk|angelNumbers|dreams|loveTarget|apologyTarget|additionalNotes|",
-  "fieldPatch":{"event":"","reflection":"","gratitude":"","selfTalk":"","angelNumbers":"","dreams":"","loveTarget":"","apologyTarget":"","additionalNotes":""},
-  "coveredFields":["event"],
-  "readyToSave":false,
-  "action":"gentle-question|comfort|quiet-celebrate|save-complete",
-  "patternStatus":"none|echo|pattern",
-  "memoryReferences":[{"date":"YYYY-MM-DD","quote":"verbatim historical words","relation":"why it may relate"}],
-  "safetyMode":false,
-  "model":"provider-model"
-}
+Return JSON only with the same fields requested by the user prompt.
 `.trim();
 
 function stripJsonFence(text: string) {
@@ -271,14 +322,15 @@ function serialiseHistory(history: CompanionHistoryItem[]) {
     .join("\n---\n");
 }
 
-function buildPrompt(input: CompanionBrainInput) {
-  const history = (input.history || []).slice(0, 24);
+function buildPrompt(input: CompanionBrainInput, phase: "record" | "finalize") {
+  const history = (input.history || []).slice(0, 30);
   return `
+PHASE: ${phase}
 COMPANION: ${input.companionName || input.companion}
 COMPANION_STYLE: ${
     input.companion === "phoenix"
-      ? "warm, emotionally alive, curious, tender, quietly hopeful"
-      : "grounded, perceptive, loyal, concise, protective without controlling"
+      ? "warm, intimate, emotionally alive, quietly strong, remembers survival and change"
+      : "grounded, perceptive, humane, quietly protective, guards facts and boundaries"
   }
 OUTPUT_LANGUAGE: ${input.language === "en" ? "English" : "Chinese matching the user"}
 TURN: ${input.turn || 1}
@@ -288,32 +340,60 @@ CURRENT_QUESTION: ${input.currentQuestion || ""}
 ALREADY_ASKED_FIELDS: ${(input.askedFields || []).join(", ") || "none"}
 
 NEWEST USER MESSAGE:
-<message>
-${input.message}
-</message>
+<message>${input.message || "No new words; integrate the completed record."}</message>
 
 CURRENT STRUCTURED DRAFT:
-<draft>
-${serialiseDraft(input.draft || {})}
-</draft>
+<draft>${serialiseDraft(input.draft || {})}</draft>
+
+PREVIOUS COMPANION STATE:
+Reply: ${input.previousReply || ""}
+Observation: ${input.previousObservation || ""}
+Choice point: ${input.previousChoicePoint || ""}
+Change evidence: ${input.previousChangeEvidence || ""}
 
 DATED HISTORY:
-<history>
-${serialiseHistory(history)}
-</history>
+<history>${serialiseHistory(history)}</history>
+
+${phase === "finalize"
+  ? `Write finalReflection as a complete closing response. No question. Begin from a concrete detail, name the tension, use dated evidence only if real, show repetition and difference, return agency through a present choice, and end with one memorable sentence. Stay brief for ordinary life. Set readyToSave=true.`
+  : `Write 3–6 natural sentences with no headings. Follow concrete detail → what may matter → real evidence or difference → present agency. Ask zero or one useful question. Do not turn every record into therapy.`}
+
+Return JSON only:
+{
+  "reply":"",
+  "observation":"",
+  "question":"",
+  "questionField":"event|reflection|gratitude|selfTalk|angelNumbers|dreams|loveTarget|apologyTarget|additionalNotes|",
+  "fieldPatch":{"event":"","reflection":"","gratitude":"","selfTalk":"","angelNumbers":"","dreams":"","loveTarget":"","apologyTarget":"","additionalNotes":""},
+  "coveredFields":["event"],
+  "readyToSave":false,
+  "action":"gentle-question|comfort|quiet-celebrate|save-complete",
+  "responseMode":"quiet|hold|contradiction|echo|loop|change",
+  "patternStatus":"none|echo|pattern",
+  "memoryReferences":[{"date":"YYYY-MM-DD","quote":"verbatim historical words","relation":"structural relation"}],
+  "loopCandidate":{"trigger":"","interpretation":"","protectedNeed":"","impulse":"","choice":"","action":"","outcome":"","deeperWant":""},
+  "choicePoint":"",
+  "changeEvidence":"",
+  "finalReflection":"",
+  "safetyMode":false,
+  "model":"provider-model"
+}
 `.trim();
 }
 
-async function callGeminiFallback(input: CompanionBrainInput): Promise<CompanionReply> {
-  const history = (input.history || []).slice(0, 24);
+async function callGeminiFallback(
+  input: CompanionBrainInput,
+  phase: "record" | "finalize"
+): Promise<CompanionReply> {
+  const history = (input.history || []).slice(0, 30);
   const response = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "gemini-3-pro-preview",
-      systemInstruction: BRAIN_SYSTEM,
-      prompt: buildPrompt(input),
-      temperature: 0.5,
+      systemInstruction: SOUL_SYSTEM,
+      prompt: buildPrompt(input, phase),
+      temperature: phase === "finalize" ? 0.72 : 0.64,
     }),
   });
 
@@ -325,21 +405,36 @@ async function callGeminiFallback(input: CompanionBrainInput): Promise<Companion
   try {
     parsed = JSON.parse(stripJsonFence(data.text || ""));
   } catch {
-    parsed = { reply: cleanText(data.text, 1600), model: "gemini-fallback" };
+    parsed = phase === "finalize"
+      ? { finalReflection: cleanText(data.text, 4000), model: "gemini-fallback" }
+      : { reply: cleanText(data.text, 2000), model: "gemini-fallback" };
   }
-  return normaliseReply(parsed, history, "gemini-fallback");
+  return normaliseReply(parsed, history, "gemini-fallback", phase);
 }
 
 export async function generateCompanionReply(input: CompanionBrainInput) {
-  const history = (input.history || []).slice(0, 24);
-  const payload = { ...input, history, systemVersion: "insightloop-brain-v2" };
+  const history = (input.history || []).slice(0, 30);
+  const payload = { ...input, history, systemVersion: "insightloop-soul-v1" };
 
   try {
     const result = await callMiMo<CompanionReply>({ mode: "reply", ...payload });
-    return normaliseReply(result, history, "mimo-v2.5-pro");
+    return normaliseReply(result, history, "mimo-v2.5-pro", "record");
   } catch (error) {
-    console.warn("MiMo companion unavailable; using the existing Gemini preview fallback.", error);
-    return callGeminiFallback(payload);
+    console.warn("MiMo companion unavailable; using Gemini preview fallback.", error);
+    return callGeminiFallback(payload, "record");
+  }
+}
+
+export async function generateFinalInsight(input: CompanionBrainInput) {
+  const history = (input.history || []).slice(0, 30);
+  const payload = { ...input, history, systemVersion: "insightloop-soul-v1" };
+
+  try {
+    const result = await callMiMo<CompanionReply>({ mode: "finalize", ...payload });
+    return normaliseReply(result, history, "mimo-v2.5-pro", "finalize");
+  } catch (error) {
+    console.warn("MiMo final integration unavailable; using Gemini preview fallback.", error);
+    return callGeminiFallback(payload, "finalize");
   }
 }
 
