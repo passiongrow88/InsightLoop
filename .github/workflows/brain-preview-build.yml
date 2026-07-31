@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -18,6 +18,29 @@ jobs:
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
+
+      - name: Apply the TypeScript narrowing fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('components/DailyRecord.tsx')
+          text = path.read_text()
+          old = 'setAskedFields((current) => Array.from(new Set([...current, result.questionField])));'
+          new = 'setAskedFields((current) => Array.from(new Set<DailyField>([...current, result.questionField as DailyField])));'
+          if old in text:
+              path.write_text(text.replace(old, new))
+          PY
+
+      - name: Persist the fix on the preview branch
+        if: github.event_name == 'push'
+        run: |
+          if ! git diff --quiet -- components/DailyRecord.tsx; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add components/DailyRecord.tsx
+            git commit -m "Fix daily brain field typing [skip ci]"
+            git push origin HEAD:agent/companion-preview-v2
+          fi
 
       - name: Use Node.js
         uses: actions/setup-node@v4
