@@ -86,6 +86,22 @@ jobs:
           app_js = (dist / 'assets' / app_name).read_text(encoding='utf-8')
           css = (dist / 'assets' / css_name).read_text(encoding='utf-8')
 
+          export_match = re.search(r'export\{([A-Za-z_$][\w$]*) as j,([A-Za-z_$][\w$]*) as r\};?$', main_js)
+          import_match = re.match(r'import\{r as ([A-Za-z_$][\w$]*),j as ([A-Za-z_$][\w$]*)\}from"\.\/index-[^"]+";', app_js)
+          root_marker = 'const rc=document.getElementById("root");'
+          if not export_match or not import_match or root_marker not in main_js:
+              raise SystemExit('Unable to break the Vite circular chunk dependency safely')
+
+          jsx_source, react_source = export_match.group(1), export_match.group(2)
+          react_local, jsx_local = import_match.group(1), import_match.group(2)
+          app_js = app_js[import_match.end():]
+          app_js = f'const {react_local}=globalThis.__IL_REACT,{jsx_local}=globalThis.__IL_JSX;' + app_js
+          main_js = main_js.replace(
+              root_marker,
+              f'globalThis.__IL_REACT={react_source};globalThis.__IL_JSX={jsx_source};{root_marker}',
+              1,
+          )
+
           def packed(value: str) -> str:
               return base64.b64encode(gzip.compress(value.encode('utf-8'), compresslevel=9)).decode('ascii')
 
