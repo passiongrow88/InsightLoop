@@ -14,28 +14,24 @@ export type CompanionReply = {
   model: string;
 };
 
-async function authHeaders() {
+async function authToken() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   const token = data.session?.access_token;
   if (!token) throw new Error("Please sign in again before using the companion.");
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
+  return token;
 }
 
 async function callMiMo<T>(body: Record<string, unknown>): Promise<T> {
-  const response = await fetch("/api/mimo", {
-    method: "POST",
-    headers: await authHeaders(),
-    body: JSON.stringify(body),
+  const token = await authToken();
+  const { data, error } = await supabase.functions.invoke("mimo-companion", {
+    body,
+    headers: { Authorization: `Bearer ${token}` },
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.detail || payload.error || "MiMo is temporarily unavailable.");
+  if (error) {
+    throw new Error(error.message || "MiMo is temporarily unavailable.");
   }
-  return payload as T;
+  return data as T;
 }
 
 export async function generateCompanionReply(input: {

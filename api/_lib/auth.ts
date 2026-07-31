@@ -1,8 +1,16 @@
 import type { VercelRequest } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+// These are Supabase's public project coordinates, not service-role secrets.
+// Environment variables still take precedence in managed deployments.
+const publicSupabaseUrl = "https://hiipbyrdkdaetroajrwk.supabase.co";
+const publicSupabaseAnonKey = "sb_publishable_WZ9n5t3bXwvimVTKVDqvXA_-TOG51hC";
+const supabaseUrl =
+  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || publicSupabaseUrl;
+const supabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  publicSupabaseAnonKey;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function required(value: string | undefined, name: string): string {

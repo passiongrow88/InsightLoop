@@ -1,5 +1,5 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { requestUser } from "./_lib/auth";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import postgres from "npm:postgres@3.4.7";
 
 type CompanionId = "phoenix" | "thunder";
 type CompanionAction =
@@ -9,9 +9,16 @@ type CompanionAction =
   | "save-complete";
 
 const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
-const CHAT_MODEL = process.env.MIMO_CHAT_MODEL || "mimo-v2.5-pro";
-const ASR_MODEL = process.env.MIMO_ASR_MODEL || "mimo-v2.5-asr";
-const TTS_MODEL = process.env.MIMO_TTS_MODEL || "mimo-v2.5-tts";
+const CHAT_MODEL = "mimo-v2.5-pro";
+const ASR_MODEL = "mimo-v2.5-asr";
+const TTS_MODEL = "mimo-v2.5-tts";
+const SECRET_NAME = "insightloop_mimo_test_key";
+
+const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, {
+  max: 1,
+  prepare: false,
+  idle_timeout: 20,
+});
 
 const allowedActions = new Set<CompanionAction>([
   "gentle-question",
@@ -23,31 +30,52 @@ const allowedActions = new Set<CompanionAction>([
 const crisisPattern =
   /\b(suicide|kill myself|end my life|self[- ]?harm|hurt myself)\b|自杀|不想活|结束生命|伤害自己|伤害我自己/i;
 
-function requiredKey() {
-  const key = process.env.MIMO_API_KEY;
-  if (!key) throw new Error("Missing MIMO_API_KEY");
-  return key;
+function corsHeaders(origin: string | null) {
+  const allowed =
+    origin === "https://insightloop.lol" ||
+    origin === "https://www.insightloop.lol" ||
+    origin === "http://localhost:5173" ||
+    Boolean(origin?.endsWith(".vercel.app"));
+
+  return {
+    "Access-Control-Allow-Origin": allowed && origin ? origin : "https://insightloop.lol",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
 }
 
 function boundedText(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-function companionVoice(companion: CompanionId, name: string, language: string) {
+async function requiredKey() {
+  const rows = await sql<{ decrypted_secret: string }[]>`
+    select decrypted_secret
+    from vault.decrypted_secrets
+    where name = ${SECRET_NAME}
+    limit 1
+  `;
+  const key = rows[0]?.decrypted_secret;
+  if (!key) throw new Error("Missing MiMo test key in Vault");
+  return key;
+}
+
+function companionVoice(companion: CompanionId, name: string) {
   const identity = name || (companion === "phoenix" ? "凤凰" : "小雷公");
   if (companion === "phoenix") {
     return `
 You are ${identity}, the user's Phoenix companion inside InsightLoop.
 Personality: warm, curious, gently expressive, hopeful without forced positivity.
-You notice the living detail in what the user said. You can offer one small
-reframe or one sincere question, but never turn the reply into a lecture.
+Notice the living detail in what the user said. Offer one small reframe or one
+sincere question when useful, but never turn the reply into a lecture.
 `;
   }
 
   return `
 You are ${identity}, the user's small Thunder Dragon companion inside InsightLoop.
 Personality: quiet, perceptive, steady, slightly understated, never cold.
-You help the user separate a tangled moment into one thing they can see clearly.
+Help the user separate a tangled moment into one thing they can see clearly.
 You may ask one precise question, but never interrogate or give a checklist.
 `;
 }
@@ -64,7 +92,7 @@ function replySystemPrompt(input: {
       : "Reply in natural Simplified Chinese unless the user's message clearly uses another language.";
 
   return `
-${companionVoice(input.companion, input.companionName, input.language)}
+${companionVoice(input.companion, input.companionName)}
 
 You are the companion, not a generic assistant. Never introduce yourself as
 MiMo, Xiaomi, a model, or InsightLoop. Do not use canned greetings.
@@ -103,7 +131,7 @@ async function callMiMo(body: Record<string, unknown>) {
     response = await fetch(MIMO_ENDPOINT, {
       method: "POST",
       headers: {
-        "api-key": requiredKey(),
+        "api-key": await requiredKey(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -141,8 +169,7 @@ function parseReply(raw: string, safetyMode: boolean) {
         : "save-complete";
     if (reply) return { reply, action };
   } catch {
-    // A useful model reply is still better than discarding it because the
-    // provider omitted the JSON wrapper.
+    // Keep a useful model reply even if the JSON wrapper was omitted.
   }
 
   return {
@@ -151,15 +178,13 @@ function parseReply(raw: string, safetyMode: boolean) {
   };
 }
 
-async function handleReply(req: VercelRequest, res: VercelResponse) {
-  const body = req.body || {};
+async function handleReply(body: Record<string, unknown>) {
   const message = boundedText(body.message, 6000);
   const companion: CompanionId = body.companion === "thunder" ? "thunder" : "phoenix";
   const companionName = boundedText(body.companionName, 40);
   const language = body.language === "en" ? "en" : "zh";
   const safetyMode = crisisPattern.test(message);
-
-  if (!message) return res.status(400).json({ error: "Missing message" });
+  if (!message) throw new Error("Missing message");
 
   const payload = await callMiMo({
     model: CHAT_MODEL,
@@ -168,10 +193,7 @@ async function handleReply(req: VercelRequest, res: VercelResponse) {
         role: "system",
         content: replySystemPrompt({ companion, companionName, language, safetyMode }),
       },
-      {
-        role: "user",
-        content: `USER'S CURRENT RECORD:\n${message}`,
-      },
+      { role: "user", content: `USER'S CURRENT RECORD:\n${message}` },
     ],
     max_completion_tokens: 420,
     temperature: 0.85,
@@ -183,18 +205,13 @@ async function handleReply(req: VercelRequest, res: VercelResponse) {
   const raw = boundedText(payload?.choices?.[0]?.message?.content, 4000);
   const parsed = parseReply(raw, safetyMode);
   if (!parsed.reply) throw new Error("MiMo returned an empty companion reply");
-
-  return res.status(200).json({
-    ...parsed,
-    safetyMode,
-    model: payload?.model || CHAT_MODEL,
-  });
+  return { ...parsed, safetyMode, model: payload?.model || CHAT_MODEL };
 }
 
-async function handleTranscription(req: VercelRequest, res: VercelResponse) {
-  const audioDataUrl = boundedText(req.body?.audioDataUrl, 7_000_000);
+async function handleTranscription(body: Record<string, unknown>) {
+  const audioDataUrl = boundedText(body.audioDataUrl, 7_000_000);
   if (!audioDataUrl.startsWith("data:audio/") || !audioDataUrl.includes(";base64,")) {
-    return res.status(400).json({ error: "Invalid audio data" });
+    throw new Error("Invalid audio data");
   }
 
   const payload = await callMiMo({
@@ -211,13 +228,13 @@ async function handleTranscription(req: VercelRequest, res: VercelResponse) {
 
   const transcript = boundedText(payload?.choices?.[0]?.message?.content, 6000);
   if (!transcript) throw new Error("MiMo returned an empty transcript");
-  return res.status(200).json({ transcript, model: payload?.model || ASR_MODEL });
+  return { transcript, model: payload?.model || ASR_MODEL };
 }
 
-async function handleSpeech(req: VercelRequest, res: VercelResponse) {
-  const text = boundedText(req.body?.text, 1200);
-  const companion: CompanionId = req.body?.companion === "thunder" ? "thunder" : "phoenix";
-  if (!text) return res.status(400).json({ error: "Missing speech text" });
+async function handleSpeech(body: Record<string, unknown>) {
+  const text = boundedText(body.text, 1200);
+  const companion: CompanionId = body.companion === "thunder" ? "thunder" : "phoenix";
+  if (!text) throw new Error("Missing speech text");
 
   const style =
     companion === "phoenix"
@@ -236,35 +253,38 @@ async function handleSpeech(req: VercelRequest, res: VercelResponse) {
 
   const audioData = boundedText(payload?.choices?.[0]?.message?.audio?.data, 12_000_000);
   if (!audioData) throw new Error("MiMo returned no speech audio");
-  return res.status(200).json({
-    audioData,
-    mimeType: "audio/wav",
-    model: payload?.model || TTS_MODEL,
-  });
+  return { audioData, mimeType: "audio/wav", model: payload?.model || TTS_MODEL };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+Deno.serve(async (req) => {
+  const headers = corsHeaders(req.headers.get("origin"));
+  if (req.method === "OPTIONS") return new Response("ok", { headers });
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
+    return Response.json({ error: "Method Not Allowed" }, { status: 405, headers });
   }
 
   try {
-    const user = await requestUser(req);
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-
-    const mode = req.body?.mode;
-    if (mode === "reply") return await handleReply(req, res);
-    if (mode === "transcribe") return await handleTranscription(req, res);
-    if (mode === "speak") return await handleSpeech(req, res);
-    return res.status(400).json({ error: "Unsupported MiMo mode" });
-  } catch (error: any) {
-    console.error("[api/mimo] request failed", {
-      mode: req.body?.mode,
-      message: String(error?.message || error),
+    const body = await req.json();
+    const mode = body?.mode;
+    const data =
+      mode === "reply"
+        ? await handleReply(body)
+        : mode === "transcribe"
+          ? await handleTranscription(body)
+          : mode === "speak"
+            ? await handleSpeech(body)
+            : null;
+    if (!data) {
+      return Response.json({ error: "Unsupported MiMo mode" }, { status: 400, headers });
+    }
+    return Response.json(data, { status: 200, headers });
+  } catch (error) {
+    console.error("[mimo-companion] request failed", {
+      message: error instanceof Error ? error.message : String(error),
     });
-    return res.status(502).json({
-      error: "MiMo request failed",
-      detail: boundedText(error?.message, 500),
-    });
+    return Response.json(
+      { error: "MiMo request failed" },
+      { status: 502, headers }
+    );
   }
-}
+});
