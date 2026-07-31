@@ -151,11 +151,19 @@ export default function DailyRecord({
       audio.onended = () => setIsSpeaking(false);
       audio.onerror = () => {
         setIsSpeaking(false);
-        setVoiceError(language === "en" ? "Audio playback failed. Please try again." : "语音播放失败，请再试一次。");
+        setVoiceError(
+          language === "en"
+            ? "Your companion could not play the reply. Please try again."
+            : "伙伴暂时没能播放回应，请再试一次。"
+        );
       };
       await audio.play();
     } catch {
-      setVoiceError(language === "en" ? "MiMo voice is temporarily unavailable." : "MiMo 语音暂时没有连上，请稍后再试。");
+      setVoiceError(
+        language === "en"
+          ? "Your companion's voice is temporarily unavailable."
+          : "伙伴的声音暂时没有连上，请稍后再试。"
+      );
       setIsSpeaking(false);
     }
   };
@@ -172,7 +180,11 @@ export default function DailyRecord({
   const startRecording = async () => {
     setVoiceError("");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setVoiceError(language === "en" ? "This browser does not support audio recording." : "这个浏览器暂不支持录音。");
+      setVoiceError(
+        language === "en"
+          ? "This browser does not support audio recording."
+          : "这个浏览器暂不支持录音。"
+      );
       return;
     }
 
@@ -195,9 +207,14 @@ export default function DailyRecord({
           type: recorder.mimeType || "audio/webm",
         });
         chunksRef.current = [];
+
         if (!blob.size) {
           setAction("idle-breathe");
-          setVoiceError(language === "en" ? "No audio was captured." : "没有录到声音，请再试一次。");
+          setVoiceError(
+            language === "en"
+              ? "No audio was captured."
+              : "没有录到声音，请再试一次。"
+          );
           return;
         }
 
@@ -206,7 +223,9 @@ export default function DailyRecord({
         try {
           const result = await transcribeCompanionAudio(blob);
           setContent((previous) =>
-            previous.trim() ? `${previous.trim()}\n${result.transcript}` : result.transcript
+            previous.trim()
+              ? `${previous.trim()}\n${result.transcript}`
+              : result.transcript
           );
           setSaved(false);
           setPetReply("");
@@ -214,7 +233,11 @@ export default function DailyRecord({
           setAction("listening");
         } catch {
           setAction("idle-breathe");
-          setVoiceError(language === "en" ? "MiMo could not transcribe that recording." : "MiMo 暂时没能识别这段录音，请再试一次。");
+          setVoiceError(
+            language === "en"
+              ? "Your companion could not understand that recording. Please try again."
+              : "伙伴暂时没能听清这段录音，请再试一次。"
+          );
         } finally {
           setIsTranscribing(false);
         }
@@ -225,7 +248,11 @@ export default function DailyRecord({
       setAction("voice-listening");
       recordingTimerRef.current = window.setTimeout(stopRecording, 60_000);
     } catch {
-      setVoiceError(language === "en" ? "Microphone permission was not granted." : "没有取得麦克风权限，请在浏览器里允许后重试。");
+      setVoiceError(
+        language === "en"
+          ? "Microphone permission was not granted."
+          : "没有取得麦克风权限，请在浏览器里允许后重试。"
+      );
     }
   };
 
@@ -235,15 +262,18 @@ export default function DailyRecord({
 
     setIsSaving(true);
     setVoiceError("");
-    setAction("thinking");
+    setAction("writing");
+
     const now = new Date();
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
       now.getDate()
     ).padStart(2, "0")}`;
 
     try {
+      // journal_entries.id is UUID. Use a real UUID instead of the old timestamp
+      // string so the first save succeeds and the AI reply can update the same row.
       const entry: JournalEntry = {
-        id: String(now.getTime()),
+        id: crypto.randomUUID(),
         createdAt: now.getTime(),
         date,
         event: text,
@@ -252,7 +282,9 @@ export default function DailyRecord({
         selfTalk: "",
       };
 
-      await onAddEntry(entry);
+      const savedEntryId = await onAddEntry(entry);
+      const savedEntry = { ...entry, id: savedEntryId };
+
       setContent("");
       setSaved(true);
       setAction("thinking");
@@ -264,7 +296,8 @@ export default function DailyRecord({
           companionName,
           language,
         });
-        const updatedEntry = { ...entry, aiResponse: result.reply };
+
+        const updatedEntry = { ...savedEntry, aiResponse: result.reply };
         setPetReply(result.reply);
         setAction(result.action);
 
@@ -285,10 +318,11 @@ export default function DailyRecord({
         setAction("save-complete");
         setVoiceError(
           language === "en"
-            ? "Your entry is saved. MiMo could not respond just now."
-            : "这段记录已经保存，但 MiMo 暂时没有回应。"
+            ? "Your entry is saved. Your companion could not respond just now."
+            : "这段记录已经保存，但伙伴刚才暂时没有回应。"
         );
       }
+
       setVoiceInput(false);
     } catch {
       setAction("idle-breathe");
@@ -304,9 +338,16 @@ export default function DailyRecord({
 
   return (
     <section className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-xl flex-col items-center justify-center px-1 pb-12 text-center">
-      <MascotStage action={action} companion={companion} companionName={companionName} />
+      <MascotStage
+        action={action}
+        companion={companion}
+        companionName={companionName}
+      />
+
       <div className="mt-1 max-w-md">
-        <p className="font-serif text-xl leading-8 text-stone-700 sm:text-2xl sm:leading-9">{prompt}</p>
+        <p className="font-serif text-xl leading-8 text-stone-700 sm:text-2xl sm:leading-9">
+          {prompt}
+        </p>
         {petReply && (
           <button
             type="button"
@@ -314,8 +355,18 @@ export default function DailyRecord({
             disabled={isSpeaking}
             className="mx-auto mt-3 inline-flex items-center gap-2 rounded-full bg-stone-100 px-4 py-2 text-sm text-stone-600 transition hover:bg-stone-200 disabled:opacity-60"
           >
-            {isSpeaking ? <Loader2 size={15} className="animate-spin" /> : <Volume2 size={15} />}
-            {language === "en" ? (isSpeaking ? "Playing…" : "Play reply") : isSpeaking ? "播放中…" : "播放回应"}
+            {isSpeaking ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Volume2 size={15} />
+            )}
+            {language === "en"
+              ? isSpeaking
+                ? "Playing…"
+                : "Play reply"
+              : isSpeaking
+                ? "播放中…"
+                : "播放回应"}
           </button>
         )}
       </div>
@@ -333,11 +384,16 @@ export default function DailyRecord({
             setAction("listening");
           }}
           onFocus={() => !saved && setAction("listening")}
-          placeholder={language === "en" ? "Start with any moment…" : "从任何一个瞬间开始写就好…"}
+          placeholder={
+            language === "en"
+              ? "Start with any moment…"
+              : "从任何一个瞬间开始写就好…"
+          }
           aria-label={language === "en" ? "Today’s entry" : "今日记录"}
           rows={5}
           className="w-full resize-none bg-transparent px-3 py-2 text-base leading-7 text-stone-700 outline-none placeholder:text-stone-300"
         />
+
         <div className="flex items-center justify-between gap-3 border-t border-stone-100 px-1 pt-3">
           <button
             type="button"
@@ -369,6 +425,7 @@ export default function DailyRecord({
                   ? "停止录音"
                   : "语音"}
           </button>
+
           <button
             type="button"
             onClick={save}
@@ -411,7 +468,10 @@ export default function DailyRecord({
       </button>
 
       {voiceError && (
-        <p role="alert" className="mt-3 rounded-2xl bg-stone-100 px-4 py-2 text-xs text-stone-600">
+        <p
+          role="alert"
+          className="mt-3 rounded-2xl bg-stone-100 px-4 py-2 text-xs text-stone-600"
+        >
           {voiceError}
         </p>
       )}
