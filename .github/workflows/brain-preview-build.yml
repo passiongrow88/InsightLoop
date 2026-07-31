@@ -1,52 +1,29 @@
-name: InsightLoop Brain Preview Build
+name: InsightLoop Soul Preview
 
 on:
   push:
     branches:
       - agent/companion-preview-v2
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: insightloop-brain-preview
+  group: insightloop-soul-preview
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-
-      - name: Apply the TypeScript narrowing fix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('components/DailyRecord.tsx')
-          text = path.read_text()
-          old = 'setAskedFields((current) => Array.from(new Set([...current, result.questionField])));'
-          new = 'setAskedFields((current) => Array.from(new Set<DailyField>([...current, result.questionField as DailyField])));'
-          if old in text:
-              path.write_text(text.replace(old, new))
-          PY
-
-      - name: Persist the fix on the preview branch
-        if: github.event_name == 'push'
-        run: |
-          if ! git diff --quiet -- components/DailyRecord.tsx; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add components/DailyRecord.tsx
-            git commit -m "Fix daily brain field typing [skip ci]"
-            git push origin HEAD:agent/companion-preview-v2
-          fi
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -112,7 +89,7 @@ jobs:
               'appName': app_name,
           }, separators=(',', ':'))
 
-          output = f'''<!doctype html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InsightLoop Brain Preview</title></head><body><div id="root"></div><script>
+          output = f'''<!doctype html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InsightLoop Soul Preview</title></head><body><div id="root"></div><script>
           const payload={payload};
           async function ungzip(b64){{const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(stream).text();}}
           (async()=>{{const [app,index,css]=await Promise.all([ungzip(payload.app),ungzip(payload.index),ungzip(payload.css)]);const style=document.createElement('style');style.textContent=css;document.head.appendChild(style);const appUrl=URL.createObjectURL(new Blob([app],{{type:'text/javascript'}}));const patched=index.replaceAll('./'+payload.appName,appUrl);const indexUrl=URL.createObjectURL(new Blob([patched],{{type:'text/javascript'}}));await import(indexUrl);}})().catch(err=>{{console.error(err);document.body.innerHTML='<pre style="padding:24px">Preview failed to start: '+String(err)+'</pre>';}});
@@ -124,18 +101,24 @@ jobs:
           print(f'Preview HTML: {len(output.encode("utf-8"))} bytes')
           PY
 
-      - name: Upload compiled preview
+      - name: Upload compiled preview artifact
         uses: actions/upload-artifact@v4
         with:
-          name: insightloop-brain-preview-dist
+          name: insightloop-soul-preview-dist
           path: dist
           if-no-files-found: error
           retention-days: 3
 
-      - name: Publish browser preview
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./preview-publish
-          publish_branch: gh-pages
-          force_orphan: true
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: preview-publish
+
+      - name: Deploy live Preview
+        id: deployment
+        uses: actions/deploy-pages@v4
