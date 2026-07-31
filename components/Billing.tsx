@@ -1,19 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Language } from '../types';
 import { translations } from '../i18n';
-import { getMyEntitlement } from '../services/entitlements';
+import { getMyEntitlement, Entitlement } from '../services/entitlements';
 import { supabase } from '../supabaseClient';
 import { Sparkles, BookOpen, Target, Brain, Gift, Clock, Check, CreditCard, X } from 'lucide-react';
 
 interface BillingProps {
   language: Language;
 }
-
-type Entitlement = {
-  plan: "free" | "pro";
-  trialEndsAt?: string;
-  subscriptionStatus?: string | null;
-};
 
 const Billing: React.FC<BillingProps> = ({ language }) => {
   const [loading, setLoading] = useState(true);
@@ -48,7 +42,7 @@ const Billing: React.FC<BillingProps> = ({ language }) => {
     );
   }
 
-  if (entitlement?.plan === 'pro') {
+  if (entitlement?.plan === 'pro' || entitlement?.plan === 'founder') {
     return <ProUserView language={language} entitlement={entitlement} />;
   }
 

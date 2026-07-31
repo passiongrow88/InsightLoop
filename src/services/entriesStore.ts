@@ -38,6 +38,7 @@ function mapJournalRowToEntry(r: any): JournalEntry {
     dreams: r.dreams || "",
     loveTarget: r.love_target || "",
     apologyTarget: r.apology_target || "",
+    aiResponse: r.ai_response || "",
     insight: r.insight || "",
 
     // ✅【修复点】补 createdAt（number）
@@ -104,6 +105,7 @@ export async function createEntry<T extends { id?: string }>(
       dreams: (e as any).dreams || "",
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
+      ai_response: (e as any).aiResponse || "",
       insight: (e as any).insight || "",
 
       // ✅【修复点】写 created_at
@@ -183,10 +185,8 @@ export async function updateEntry<T>(
       dreams: (e as any).dreams || "",
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
+      ai_response: (e as any).aiResponse || "",
       insight: (e as any).insight || "",
-
-      // ✅【修复点】更新时也写 created_at（确保一致）
-      created_at: new Date((e as any).createdAt ?? Date.now()).toISOString(),
     };
 
     const { error } = await supabase

@@ -7,7 +7,10 @@ import Manifestation from "./components/Manifestation";
 import Billing from "./components/Billing";
 import Paywall from "./components/Paywall";
 import MemberSpace from "./components/MemberSpace";
-import AdminResourceUpload from "./components/AdminResourceUpload";
+import AdminConsole from "./components/AdminConsole";
+import FounderInvitation from "./components/FounderInvitation";
+import DailyRecord from "./components/DailyRecord";
+import CompanionOnboarding from "./components/CompanionOnboarding";
 
 import { getMyEntitlement, isPaywallActive } from "./services/entitlements";
 import {
@@ -25,7 +28,23 @@ import {
   ViewType,
   Language,
   User,
+  CompanionId,
 } from "./types";
+
+function toAppUser(authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }): User {
+  const metadata = authUser.user_metadata || {};
+  const companion = metadata.insightloop_companion;
+
+  return {
+    id: authUser.id,
+    email: authUser.email ?? "",
+    name: typeof metadata.name === "string" ? metadata.name : "",
+    reminderTime: typeof metadata.reminder_time === "string" ? metadata.reminder_time : undefined,
+    companion: companion === "phoenix" || companion === "thunder" ? companion : undefined,
+    companionName: typeof metadata.insightloop_companion_name === "string" ? metadata.insightloop_companion_name : undefined,
+    companionChosenAt: typeof metadata.insightloop_companion_chosen_at === "string" ? metadata.insightloop_companion_chosen_at : undefined,
+  };
+}
 
 function App() {
   // Auth State
@@ -49,6 +68,7 @@ function App() {
 
   // Data loading indicator (avoid flashing empty lists)
   const [cloudLoaded, setCloudLoaded] = useState(false);
+  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite"));
 
   // 1) Initial Load (CRITICAL: ONLY trust Supabase session, not localStorage session)
   useEffect(() => {
@@ -62,10 +82,7 @@ function App() {
           console.warn("Supabase getUser error:", error.message);
           setCurrentUser(null);
         } else if (data?.user) {
-          setCurrentUser({
-            id: data.user.id,
-            email: data.user.email ?? "",
-          } as unknown as User);
+          setCurrentUser(toAppUser(data.user));
         } else {
           setCurrentUser(null);
         }
@@ -78,10 +95,7 @@ function App() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          email: session.user.email ?? "",
-        } as unknown as User);
+        setCurrentUser(toAppUser(session.user));
       } else {
         setCurrentUser(null);
       }
@@ -201,6 +215,22 @@ function App() {
     }
   };
 
+  const handleCompanionComplete = async (companion: CompanionId, companionName: string) => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        insightloop_companion: companion,
+        insightloop_companion_name: companionName,
+        insightloop_companion_chosen_at: new Date().toISOString(),
+      },
+    });
+
+    if (error || !data.user) {
+      throw error || new Error("Could not save your companion choice.");
+    }
+
+    setCurrentUser(toAppUser(data.user));
+  };
+
   // --- Journal CRUD (write to Supabase) ---
 
   const handleAddEntry = async (entry: JournalEntry) => {
@@ -220,6 +250,24 @@ function App() {
       // rollback
       setEntries((prev) => prev.filter((x) => x !== entry));
       alert("保存失败：云端写入失败（请确认已登录且网络正常）");
+    }
+  };
+
+  // The daily surface must confirm a save in place. The legacy journal keeps its
+  // existing redirect to history; both paths still use the same cloud write logic.
+  const handleAddDailyEntry = async (entry: JournalEntry) => {
+    setEntries((prev) => [entry, ...prev]);
+
+    try {
+      const newId = await createEntry("journal", entry);
+      setEntries((prev) =>
+        prev.map((e) => (e === entry ? { ...e, id: e.id ?? newId } : e))
+      );
+    } catch (e) {
+      console.error("Create daily journal entry failed", e);
+      setEntries((prev) => prev.filter((x) => x !== entry));
+      alert("保存失败：云端写入失败（请确认已登录且网络正常）");
+      throw e;
     }
   };
 
@@ -322,6 +370,27 @@ function App() {
     );
   }
 
+  if (inviteToken) {
+    return <FounderInvitation
+      token={inviteToken}
+      language={language}
+      onComplete={() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("invite");
+        window.history.replaceState({}, "", url);
+        setInviteToken(null);
+        setCurrentView("home");
+      }}
+    />;
+  }
+
+  // A companion is an account-level choice, saved in Supabase Auth metadata.
+  // It must be completed before the daily surface can load, so users cannot
+  // accidentally see one companion and later be assigned the other.
+  if (!currentUser.companion) {
+    return <CompanionOnboarding language={language} onComplete={handleCompanionComplete} />;
+  }
+
   // Wait paywall check (avoid flashing UI)
   if (!paywallChecked) return null;
 
@@ -335,11 +404,10 @@ function App() {
     switch (currentView) {
       case "home":
         return (
-          <Home
-            setCurrentView={handleSetCurrentView}
-            language={language}
-            currentUser={currentUser}
-            onUpdateUser={handleUpdateUser}
+          <DailyRecord
+            onAddEntry={handleAddDailyEntry}
+            companion={currentUser.companion!}
+            companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
           />
         );
 
@@ -396,20 +464,14 @@ function App() {
         );
 
       case "admin":
-        return (
-          <AdminResourceUpload
-            language={language}
-            onSuccess={() => console.log("Resource added!")}
-          />
-        );
+        return <AdminConsole language={language} />;
 
       default:
         return (
-          <Home
-            setCurrentView={handleSetCurrentView}
-            language={language}
-            currentUser={currentUser}
-            onUpdateUser={handleUpdateUser}
+          <DailyRecord
+            onAddEntry={handleAddDailyEntry}
+            companion={currentUser.companion!}
+            companionName={currentUser.companionName || (currentUser.companion === "phoenix" ? "凤凰" : "小雷公")}
           />
         );
     }

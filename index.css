@@ -47,3 +47,13 @@ body::before{
   100%{filter:drop-shadow(0 0 4px rgba(124,58,237,.20));opacity:.85;}
 }
 .is-generating svg{animation:insightloopGlow 1.6s ease-in-out infinite;}
+
+.ritual-primary,.ritual-secondary{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  border-radius:999px;padding:.75rem 1.25rem;font-size:.875rem;font-weight:500;
+  transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease;
+}
+.ritual-primary{background:#f97316;color:#fff;box-shadow:0 8px 24px rgba(234,88,12,.22)}
+.ritual-primary:hover:not(:disabled){background:#ea580c;transform:translateY(-1px)}
+.ritual-secondary{border:1px solid rgba(120,113,108,.18);background:rgba(255,255,255,.8);color:#57534e}
+.ritual-secondary:hover{border-color:rgba(249,115,22,.35);background:#fff7ed;color:#c2410c}
