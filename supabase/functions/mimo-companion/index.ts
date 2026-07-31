@@ -50,6 +50,9 @@ function boundedText(value: unknown, max: number) {
 }
 
 async function requiredKey() {
+  const environmentKey = Deno.env.get("MIMO_API_KEY")?.trim();
+  if (environmentKey) return environmentKey;
+
   const rows = await sql<{ decrypted_secret: string }[]>`
     select decrypted_secret
     from vault.decrypted_secrets
