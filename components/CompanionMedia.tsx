@@ -44,6 +44,23 @@ const companionFallback = {
   thunder: { mark: "ϟ", color: "from-sky-300 via-indigo-300 to-violet-300", name: "小雷公" },
 } as const;
 
+const previewMascotBase =
+  "https://raw.githubusercontent.com/passiongrow88/InsightLoop/9151601c789a02db9ae3638e3bf411e1c65be130/public/mascots";
+
+function mascotSource(path: string) {
+  const configuredBase = import.meta.env.VITE_MASCOT_BASE_URL?.replace(/\/$/, "");
+  if (configuredBase) return `${configuredBase}/${path}`;
+
+  // Keep the real production domain self-contained. Preview deployments load
+  // the same immutable media commit from GitHub so the Vercel source upload
+  // stays below its 4 MB connector limit.
+  const host = window.location.hostname;
+  const base = host === "insightloop.lol" || host === "www.insightloop.lol"
+    ? "/mascots"
+    : previewMascotBase;
+  return `${base}/${path}`;
+}
+
 function VideoOrFallback({
   source,
   className = "",
@@ -102,7 +119,7 @@ export function CompanionMedia({ companion, action, ...props }: CompanionMediaPr
   return (
     <VideoOrFallback
       companion={companion}
-      source={`/mascots/${companion}/${action}.webm`}
+      source={mascotSource(`${companion}/${action}.webm`)}
       {...props}
     />
   );
@@ -112,7 +129,7 @@ export function EggMedia({ companion, action, ...props }: EggMediaProps) {
   return (
     <VideoOrFallback
       companion={companion}
-      source={`/mascots/eggs/${companion}-${action}.webm`}
+      source={mascotSource(`eggs/${companion}-${action}.webm`)}
       {...props}
     />
   );
