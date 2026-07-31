@@ -17,9 +17,11 @@ import {
 import { CompanionId, JournalEntry, Language } from "../types";
 import {
   CompanionHistoryItem,
+  CompanionResponseMode,
   DailyDraft,
   DailyField,
   generateCompanionReply,
+  generateFinalInsight,
   synthesizeCompanionReply,
   transcribeCompanionAudio,
 } from "../services/mimoService";
@@ -93,14 +95,14 @@ const ACTION_LABEL: Record<MascotAction, string> = {
   listening: "认真倾听",
   "voice-listening": "听你说",
   writing: "整理并写下",
-  thinking: "理解你说的话",
+  thinking: "理解这段经历",
   "gentle-question": "轻轻问一句",
   "browse-archive": "翻阅真实旧记录",
-  "memory-found": "找到一次可能的呼应",
-  "pattern-found": "找到有日期依据的重复轨迹",
-  comfort: "陪在你身边",
-  "quiet-celebrate": "替你开心",
-  "save-complete": "已经保存",
+  "memory-found": "看见一次可能的呼应",
+  "pattern-found": "看见一个熟悉的路口",
+  comfort: "先陪你停一下",
+  "quiet-celebrate": "看见这次的不同",
+  "save-complete": "这一刻已经收好",
 };
 
 function MascotStage({
@@ -128,7 +130,7 @@ function MascotStage({
       <div
         className={`absolute inset-5 rounded-full blur-2xl transition-all duration-700 ${
           companion === "phoenix" ? "bg-orange-100/80" : "bg-indigo-100/80"
-        } ${action === "pattern-found" ? "scale-110 opacity-100" : "opacity-75"}`}
+        } ${action === "pattern-found" || action === "quiet-celebrate" ? "scale-110 opacity-100" : "opacity-75"}`}
       />
       <CompanionMedia
         companion={companion}
@@ -167,7 +169,7 @@ function hasDraftContent(draft: DailyDraft) {
 function toHistory(entries: JournalEntry[]): CompanionHistoryItem[] {
   return [...entries]
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    .slice(0, 24)
+    .slice(0, 30)
     .map((entry) => ({
       date: entry.date,
       event: entry.event || "",
@@ -197,6 +199,7 @@ export default function DailyRecord({
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reply, setReply] = useState("");
+  const [finalReflection, setFinalReflection] = useState("");
   const [observation, setObservation] = useState("");
   const [question, setQuestion] = useState("");
   const [questionField, setQuestionField] = useState<DailyField | "">("");
@@ -204,6 +207,9 @@ export default function DailyRecord({
   const [coveredFields, setCoveredFields] = useState<DailyField[]>([]);
   const [turn, setTurn] = useState(0);
   const [lastUserWords, setLastUserWords] = useState("");
+  const [responseMode, setResponseMode] = useState<CompanionResponseMode>("quiet");
+  const [choicePoint, setChoicePoint] = useState("");
+  const [changeEvidence, setChangeEvidence] = useState("");
   const [memoryReferences, setMemoryReferences] = useState<
     { date: string; quote: string; relation: string }[]
   >([]);
@@ -224,6 +230,7 @@ export default function DailyRecord({
   const history = useMemo(() => toHistory(entries), [entries]);
   const fieldLabels = language === "en" ? FIELD_LABEL_EN : FIELD_LABEL_ZH;
   const filledFields = (Object.keys(draft) as DailyField[]).filter((field) => draft[field].trim());
+  const visibleReply = saved && finalReflection ? finalReflection : reply;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setAction("idle-breathe"), 2200);
@@ -244,9 +251,7 @@ export default function DailyRecord({
       ? "What happened today? Start with the moment you most want to keep."
       : "今天发生了什么？从你最想留下的那个瞬间说起就好。";
 
-  const displayPrompt = question || opening;
-
-  const playReply = async (text = [reply, question].filter(Boolean).join(" ")) => {
+  const playReply = async (text = [visibleReply, saved ? "" : question].filter(Boolean).join(" ")) => {
     if (!text || isSpeaking) return;
     setVoiceError("");
     setIsSpeaking(true);
@@ -343,19 +348,26 @@ export default function DailyRecord({
     }
 
     setDraft((current) => mergeDraft(current, patch));
-    setCoveredFields((current) => Array.from(new Set([...current, ...result.coveredFields, ...Object.keys(patch)])) as DailyField[]);
+    setCoveredFields(
+      (current) => Array.from(new Set([...current, ...result.coveredFields, ...Object.keys(patch)])) as DailyField[]
+    );
     setReply(result.reply);
+    setFinalReflection("");
     setObservation(result.observation);
     setQuestion(result.question);
     setQuestionField(result.questionField);
     setMemoryReferences(result.memoryReferences);
+    setResponseMode(result.responseMode);
+    setChoicePoint(result.choicePoint);
+    setChangeEvidence(result.changeEvidence);
     setReadyToSave(result.readyToSave || turn >= 3 || !result.question);
 
     if (result.questionField) {
       setAskedFields((current) => Array.from(new Set<DailyField>([...current, result.questionField as DailyField])));
     }
 
-    if (result.patternStatus === "pattern") setAction("pattern-found");
+    if (result.responseMode === "change") setAction("quiet-celebrate");
+    else if (result.patternStatus === "pattern") setAction("pattern-found");
     else if (result.patternStatus === "echo") setAction("memory-found");
     else setAction(result.action);
   };
@@ -383,6 +395,10 @@ export default function DailyRecord({
         currentQuestion: question,
         currentQuestionField: questionField,
         turn: turn + 1,
+        previousReply: reply,
+        previousObservation: observation,
+        previousChoicePoint: choicePoint,
+        previousChangeEvidence: changeEvidence,
       });
       applyBrainResult(result, text, fallbackField);
       setTurn((value) => value + 1);
@@ -425,6 +441,10 @@ export default function DailyRecord({
         currentQuestionField: questionField,
         turn: turn + 1,
         skipped: true,
+        previousReply: reply,
+        previousObservation: observation,
+        previousChoicePoint: choicePoint,
+        previousChangeEvidence: changeEvidence,
       });
       applyBrainResult(result, "", "additionalNotes");
       setTurn((value) => value + 1);
@@ -449,22 +469,56 @@ export default function DailyRecord({
     if (!hasDraftContent(finalDraft)) return;
 
     setIsSaving(true);
-    setAction("writing");
     setVoiceError("");
+    setAction(history.length ? "browse-archive" : "thinking");
+
+    let integratedReply = "";
+    let integratedReferences = memoryReferences;
+    let integratedMode = responseMode;
+    let integratedChoice = choicePoint;
+    let integratedChange = changeEvidence;
+
+    try {
+      const finalResult = await generateFinalInsight({
+        message: lastUserWords || pending || finalDraft.event || finalDraft.additionalNotes,
+        companion,
+        companionName,
+        language,
+        history,
+        draft: finalDraft,
+        askedFields,
+        currentQuestion: question,
+        currentQuestionField: questionField,
+        turn: turn + 1,
+        previousReply: reply,
+        previousObservation: observation,
+        previousChoicePoint: choicePoint,
+        previousChangeEvidence: changeEvidence,
+      });
+      integratedReply = finalResult.finalReflection || finalResult.reply;
+      integratedReferences = finalResult.memoryReferences.length
+        ? finalResult.memoryReferences
+        : memoryReferences;
+      integratedMode = finalResult.responseMode;
+      integratedChoice = finalResult.choicePoint || choicePoint;
+      integratedChange = finalResult.changeEvidence || changeEvidence;
+    } catch {
+      const evidenceText = memoryReferences.length
+        ? `\n\n${memoryReferences.map((item) => `${item.date}｜“${item.quote}”｜${item.relation}`).join("\n")}`
+        : "";
+      integratedReply = [reply, observation, evidenceText].filter(Boolean).join("\n\n");
+    }
+
+    if (!integratedReply) {
+      integratedReply = language === "en"
+        ? "This moment is saved as it was. You do not need to force an answer tonight."
+        : "这一刻已经照原来的样子留下来了。今晚不必急着把所有答案想清楚。";
+    }
 
     const now = new Date();
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
       now.getDate()
     ).padStart(2, "0")}`;
-
-    const evidenceText = memoryReferences.length
-      ? `\n\n历史呼应：\n${memoryReferences
-          .map((item) => `${item.date}｜“${item.quote}”｜${item.relation}`)
-          .join("\n")}`
-      : "";
-    const aiResponse = [reply, observation ? `我的暂时理解：${observation}` : "", evidenceText]
-      .filter(Boolean)
-      .join("\n\n");
 
     const entry: JournalEntry = {
       id: crypto.randomUUID(),
@@ -479,9 +533,10 @@ export default function DailyRecord({
       loveTarget: finalDraft.loveTarget,
       apologyTarget: finalDraft.apologyTarget,
       additionalNotes: finalDraft.additionalNotes,
-      aiResponse,
+      aiResponse: integratedReply,
     };
 
+    setAction("writing");
     try {
       await onAddEntry(entry);
       setDraft(finalDraft);
@@ -490,7 +545,12 @@ export default function DailyRecord({
       setReadyToSave(true);
       setQuestion("");
       setQuestionField("");
-      setAction("save-complete");
+      setFinalReflection(integratedReply);
+      setMemoryReferences(integratedReferences);
+      setResponseMode(integratedMode);
+      setChoicePoint(integratedChoice);
+      setChangeEvidence(integratedChange);
+      setAction(integratedMode === "change" ? "quiet-celebrate" : "save-complete");
     } catch {
       setAction("idle-breathe");
       setVoiceError(language === "en" ? "The record could not be saved." : "这段记录没有保存成功，请检查网络后重试。 ");
@@ -503,6 +563,7 @@ export default function DailyRecord({
     setInput("");
     setDraft({ ...EMPTY_DRAFT });
     setReply("");
+    setFinalReflection("");
     setObservation("");
     setQuestion("");
     setQuestionField("");
@@ -511,6 +572,9 @@ export default function DailyRecord({
     setTurn(0);
     setLastUserWords("");
     setMemoryReferences([]);
+    setResponseMode("quiet");
+    setChoicePoint("");
+    setChangeEvidence("");
     setReadyToSave(false);
     setSaved(false);
     setShowDraft(false);
@@ -522,30 +586,44 @@ export default function DailyRecord({
       <MascotStage action={action} companion={companion} companionName={companionName} />
 
       <div className="mt-3 w-full max-w-xl">
-        {reply && (
-          <div className="rounded-3xl bg-white/80 px-5 py-4 text-left shadow-[0_14px_45px_rgba(95,72,46,.07)] ring-1 ring-stone-100">
-            <p className="text-[15px] leading-7 text-stone-700">{reply}</p>
-            {observation && (
-              <div className="mt-3 rounded-2xl bg-amber-50/70 px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-amber-700/70">
-                  {language === "en" ? "My temporary understanding" : "我的暂时理解"}
+        {visibleReply && (
+          <div className="rounded-3xl bg-white/85 px-5 py-5 text-left shadow-[0_14px_45px_rgba(95,72,46,.07)] ring-1 ring-stone-100">
+            <p className="whitespace-pre-line text-[15px] leading-7 text-stone-700">{visibleReply}</p>
+
+            {!saved && observation && (
+              <div className="mt-4 border-l-2 border-amber-200 pl-4">
+                <p className="text-xs text-amber-700/70">
+                  {language === "en" ? "What I may be hearing…" : "我听见的可能是……"}
                 </p>
                 <p className="mt-1 text-sm leading-6 text-stone-600">{observation}</p>
               </div>
             )}
+
+            {changeEvidence && (
+              <div className="mt-4 rounded-2xl bg-emerald-50/70 px-4 py-3">
+                <p className="text-xs text-emerald-700/70">
+                  {language === "en" ? "What is different this time" : "这一次不同的是"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-stone-650">{changeEvidence}</p>
+              </div>
+            )}
+
+            {choicePoint && (
+              <div className="mt-3 rounded-2xl bg-orange-50/70 px-4 py-3">
+                <p className="text-xs text-orange-700/70">
+                  {language === "en" ? "The crossroad in front of you" : "你现在站着的路口"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-stone-650">{choicePoint}</p>
+              </div>
+            )}
+
             {memoryReferences.length > 0 && (
-              <div className="mt-3 rounded-2xl bg-indigo-50/60 px-4 py-3">
-                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-indigo-700/70">
+              <details className="mt-4 rounded-2xl bg-indigo-50/55 px-4 py-3 text-left">
+                <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-indigo-700/75">
                   <Clock3 size={13} />
-                  {memoryReferences.length >= 2
-                    ? language === "en"
-                      ? "Dated pattern evidence"
-                      : "有日期依据的重复轨迹"
-                    : language === "en"
-                      ? "A possible dated echo"
-                      : "一次可能的历史呼应"}
-                </div>
-                <div className="mt-2 space-y-2">
+                  {language === "en" ? "Why this reminded me of your past" : "为什么我会想到过去"}
+                </summary>
+                <div className="mt-3 space-y-3">
                   {memoryReferences.map((item, index) => (
                     <p key={`${item.date}-${index}`} className="text-sm leading-6 text-stone-600">
                       <span className="font-medium text-indigo-700">{item.date}</span>
@@ -554,101 +632,106 @@ export default function DailyRecord({
                     </p>
                   ))}
                 </div>
-              </div>
+              </details>
             )}
+
             <button
               type="button"
               onClick={() => void playReply()}
               disabled={isSpeaking}
-              className="mt-3 inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-2 text-xs text-stone-500 transition hover:bg-stone-200 disabled:opacity-60"
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-2 text-xs text-stone-500 transition hover:bg-stone-200 disabled:opacity-60"
             >
               {isSpeaking ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
-              {language === "en" ? "Play" : "播放回应"}
+              {language === "en" ? "Listen" : "听伙伴说"}
             </button>
           </div>
         )}
 
-        <div className="mt-4 px-2">
-          <p className="text-lg font-medium leading-8 text-stone-700 sm:text-xl">{displayPrompt}</p>
-          {question && (
-            <p className="mt-1 text-sm text-stone-400">
-              {language === "en" ? "You can answer, skip, or save now." : "你可以回答、跳过，或现在先保存。"}
-            </p>
-          )}
-        </div>
+        {!saved && (
+          <div className="mt-4 px-2">
+            <p className="text-lg font-medium leading-8 text-stone-700 sm:text-xl">{question || opening}</p>
+            {question && (
+              <p className="mt-1 text-sm text-stone-400">
+                {language === "en" ? "Answer, skip it, or save this moment now." : "你可以回答、跳过，或先把这一刻保存下来。"}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="mt-5 w-full max-w-xl rounded-[28px] border border-orange-100 bg-white p-3 text-left shadow-[0_14px_50px_rgba(129,90,38,0.08)]">
-        <textarea
-          value={input}
-          onChange={(event) => {
-            setInput(event.target.value);
-            setSaved(false);
-            setVoiceInput(false);
-            setAction("listening");
-          }}
-          onFocus={() => !saved && setAction("listening")}
-          placeholder={
-            language === "en"
-              ? question
-                ? "Answer in your own words…"
-                : "Start with any moment…"
-              : question
-                ? "照你自己的方式回答就好…"
-                : "从任何一个瞬间开始写就好…"
-          }
-          rows={4}
-          className="w-full resize-none bg-transparent px-3 py-2 text-base leading-7 text-stone-700 outline-none placeholder:text-stone-300"
-        />
+      {!saved && (
+        <div className="mt-5 w-full max-w-xl rounded-[28px] border border-orange-100 bg-white p-3 text-left shadow-[0_14px_50px_rgba(129,90,38,0.08)]">
+          <textarea
+            value={input}
+            onChange={(event) => {
+              setInput(event.target.value);
+              setSaved(false);
+              setVoiceInput(false);
+              setAction("listening");
+            }}
+            onFocus={() => setAction("listening")}
+            placeholder={
+              language === "en"
+                ? question
+                  ? "Answer in your own words…"
+                  : "Start with any moment…"
+                : question
+                  ? "照你自己的方式回答就好……"
+                  : "从任何一个瞬间开始写就好……"
+            }
+            rows={4}
+            className="w-full resize-none bg-transparent px-3 py-2 text-base leading-7 text-stone-700 outline-none placeholder:text-stone-300"
+          />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 px-1 pt-3">
-          <button
-            type="button"
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={isTranscribing || isWorking || isSaving}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm transition disabled:opacity-50 ${
-              isRecording ? "bg-rose-50 text-rose-600" : "text-stone-500 hover:bg-stone-50"
-            }`}
-          >
-            {isTranscribing ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : isRecording ? (
-              <Square size={15} fill="currentColor" />
-            ) : (
-              <Mic size={16} />
-            )}
-            {language === "en"
-              ? isRecording
-                ? "Stop"
-                : "Voice"
-              : isRecording
-                ? "停止录音"
-                : "语音"}
-          </button>
-
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 px-1 pt-3">
             <button
               type="button"
-              onClick={() => void saveRecord()}
-              disabled={(!input.trim() && !hasDraftContent(draft)) || isWorking || isSaving}
-              className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isTranscribing || isWorking || isSaving}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm transition disabled:opacity-50 ${
+                isRecording ? "bg-rose-50 text-rose-600" : "text-stone-500 hover:bg-stone-50"
+              }`}
             >
-              {isSaving ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : <Save size={15} />}
-              {language === "en" ? (saved ? "Saved" : "Save now") : saved ? "已经保存" : "先保存"}
+              {isTranscribing ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : isRecording ? (
+                <Square size={15} fill="currentColor" />
+              ) : (
+                <Mic size={16} />
+              )}
+              {language === "en"
+                ? isRecording
+                  ? "Stop"
+                  : "Voice"
+                : isRecording
+                  ? "停止录音"
+                  : "语音"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => void continueRecord()}
-              disabled={!input.trim() || isWorking || isSaving || isRecording || isTranscribing}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-orange-600 disabled:bg-orange-200"
-            >
-              {isWorking ? <Sparkles size={16} className="animate-pulse" /> : <Send size={16} />}
-              {language === "en" ? (turn ? "Continue" : "Tell my companion") : turn ? "继续记录" : "告诉伙伴"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void saveRecord()}
+                disabled={(!input.trim() && !hasDraftContent(draft)) || isWorking || isSaving}
+                className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
+              >
+                {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                {language === "en" ? "Finish and save" : "完成并保存"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void continueRecord()}
+                disabled={!input.trim() || isWorking || isSaving || isRecording || isTranscribing}
+                className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-orange-600 disabled:bg-orange-200"
+              >
+                {isWorking ? <Sparkles size={16} className="animate-pulse" /> : <Send size={16} />}
+                {language === "en" ? (turn ? "Continue" : "Tell my companion") : turn ? "继续记录" : "告诉伙伴"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {question && !saved && (
         <button
@@ -671,7 +754,7 @@ export default function DailyRecord({
           >
             <span className="inline-flex items-center gap-2">
               <BookOpen size={16} className="text-orange-500" />
-              {language === "en" ? "What has been recorded" : "已经替你记下"}
+              {language === "en" ? "Open today's record" : "打开今天的记录"}
               <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs text-orange-600">{filledFields.length}</span>
             </span>
             {showDraft ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -681,7 +764,7 @@ export default function DailyRecord({
               {filledFields.map((field) => (
                 <div key={field}>
                   <p className="text-xs font-medium text-stone-400">{fieldLabels[field]}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-650">{draft[field]}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-600">{draft[field]}</p>
                 </div>
               ))}
               {lastUserWords && (
@@ -699,15 +782,16 @@ export default function DailyRecord({
         <button
           type="button"
           onClick={resetRecord}
-          className="mt-5 rounded-full bg-stone-100 px-5 py-2.5 text-sm text-stone-600 transition hover:bg-stone-200"
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-stone-100 px-5 py-2.5 text-sm text-stone-600 transition hover:bg-stone-200"
         >
-          {language === "en" ? "Start another record" : "再记一件事"}
+          <Check size={15} />
+          {language === "en" ? "Record another moment" : "再记一个瞬间"}
         </button>
       )}
 
       {readyToSave && !saved && hasDraftContent(draft) && (
         <p className="mt-3 text-xs text-stone-400">
-          {language === "en" ? "There is enough to save. Any next question is optional." : "现在已经可以保存；后面的追问都只是邀请。"}
+          {language === "en" ? "There is enough to save. Every next question is optional." : "现在已经足够保存；后面的每一个问题都只是邀请。"}
         </p>
       )}
 
