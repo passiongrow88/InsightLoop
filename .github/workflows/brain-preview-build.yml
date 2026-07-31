@@ -12,12 +12,18 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: insightloop-brain-preview
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Apply the TypeScript narrowing fix
         run: |
@@ -54,6 +60,54 @@ jobs:
       - name: Build preview
         run: npm run build
 
+      - name: Create self-contained browser preview
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          import gzip
+          import json
+          import re
+
+          dist = Path('dist')
+          html = (dist / 'index.html').read_text(encoding='utf-8')
+          main_match = re.search(r'<script type="module"[^>]*src="([^"]+)"', html)
+          css_match = re.search(r'<link rel="stylesheet"[^>]*href="([^"]+)"', html)
+          if not main_match or not css_match:
+              raise SystemExit('Unable to identify Vite assets')
+
+          main_name = Path(main_match.group(1)).name
+          css_name = Path(css_match.group(1)).name
+          main_js = (dist / 'assets' / main_name).read_text(encoding='utf-8')
+          app_match = re.search(r'\.\/((?:App)-[A-Za-z0-9_-]+\.js)', main_js)
+          if not app_match:
+              raise SystemExit('Unable to identify the lazy App chunk')
+          app_name = app_match.group(1)
+          app_js = (dist / 'assets' / app_name).read_text(encoding='utf-8')
+          css = (dist / 'assets' / css_name).read_text(encoding='utf-8')
+
+          def packed(value: str) -> str:
+              return base64.b64encode(gzip.compress(value.encode('utf-8'), compresslevel=9)).decode('ascii')
+
+          payload = json.dumps({
+              'app': packed(app_js),
+              'index': packed(main_js),
+              'css': packed(css),
+              'appName': app_name,
+          }, separators=(',', ':'))
+
+          output = f'''<!doctype html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InsightLoop Brain Preview</title></head><body><div id="root"></div><script>
+          const payload={payload};
+          async function ungzip(b64){{const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(stream).text();}}
+          (async()=>{{const [app,index,css]=await Promise.all([ungzip(payload.app),ungzip(payload.index),ungzip(payload.css)]);const style=document.createElement('style');style.textContent=css;document.head.appendChild(style);const appUrl=URL.createObjectURL(new Blob([app],{{type:'text/javascript'}}));const patched=index.replaceAll('./'+payload.appName,appUrl);const indexUrl=URL.createObjectURL(new Blob([patched],{{type:'text/javascript'}}));await import(indexUrl);}})().catch(err=>{{console.error(err);document.body.innerHTML='<pre style="padding:24px">Preview failed to start: '+String(err)+'</pre>';}});
+          </script></body></html>'''
+
+          publish = Path('preview-publish')
+          publish.mkdir(exist_ok=True)
+          (publish / 'index.html').write_text(output, encoding='utf-8')
+          print(f'Preview HTML: {len(output.encode("utf-8"))} bytes')
+          PY
+
       - name: Upload compiled preview
         uses: actions/upload-artifact@v4
         with:
@@ -61,3 +115,12 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 3
+
+      - name: Publish browser preview
+        if: github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./preview-publish
+          publish_branch: gh-pages
+          force_orphan: true
