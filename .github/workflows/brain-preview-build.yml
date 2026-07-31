@@ -117,7 +117,6 @@ jobs:
           retention-days: 3
 
       - name: Publish browser preview
-        if: github.event_name != 'pull_request'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
