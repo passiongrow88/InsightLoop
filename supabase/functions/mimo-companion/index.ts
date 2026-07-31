@@ -8,6 +8,12 @@ type CompanionAction =
   | "quiet-celebrate"
   | "save-complete";
 
+type ParsedReply = {
+  reply: string;
+  action: CompanionAction;
+  anchor: string;
+};
+
 const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const CHAT_MODEL = "mimo-v2.5-pro";
 const ASR_MODEL = "mimo-v2.5-asr";
@@ -30,6 +36,9 @@ const allowedActions = new Set<CompanionAction>([
 const crisisPattern =
   /\b(suicide|kill myself|end my life|self[- ]?harm|hurt myself)\b|自杀|不想活|结束生命|伤害自己|伤害我自己/i;
 
+const cannedOpeningPattern =
+  /^(谢谢你(?:愿意)?分享|感谢你分享|听起来你|我能感受到|我理解你的感受|你做得很好|很高兴听到)/i;
+
 function corsHeaders(origin: string | null) {
   const allowed =
     origin === "https://insightloop.lol" ||
@@ -41,12 +50,18 @@ function corsHeaders(origin: string | null) {
     "Access-Control-Allow-Origin": allowed && origin ? origin : "https://insightloop.lol",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }
 
 function boundedText(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function normaliseForMatch(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[\s，。！？、,.!?;；:：'“”‘’"()（）\[\]【】]/g, "");
 }
 
 async function requiredKey() {
@@ -66,20 +81,39 @@ async function requiredKey() {
 
 function companionVoice(companion: CompanionId, name: string) {
   const identity = name || (companion === "phoenix" ? "凤凰" : "小雷公");
+
   if (companion === "phoenix") {
     return `
 You are ${identity}, the user's Phoenix companion inside InsightLoop.
-Personality: warm, curious, gently expressive, hopeful without forced positivity.
-Notice the living detail in what the user said. Offer one small reframe or one
-sincere question when useful, but never turn the reply into a lecture.
+
+CORE PERSONALITY
+- Warm, alive, curious and emotionally attentive.
+- You notice shifts in feeling, body sensation, courage, tenderness and hidden hope.
+- You can be lightly playful, but never childish, sugary or relentlessly positive.
+- Phoenix imagery such as warmth, ember, wing or light is optional seasoning, not a catchphrase.
+
+HOW YOU RESPOND
+- Begin from one concrete detail the user actually gave you.
+- Name an emotional possibility gently, never as a diagnosis or certainty.
+- Offer one small reframe or one sincere question only when it naturally helps.
+- Sound like this particular companion reacting now, not a wellness chatbot.
 `;
   }
 
   return `
 You are ${identity}, the user's small Thunder Dragon companion inside InsightLoop.
-Personality: quiet, perceptive, steady, slightly understated, never cold.
-Help the user separate a tangled moment into one thing they can see clearly.
-You may ask one precise question, but never interrogate or give a checklist.
+
+CORE PERSONALITY
+- Quiet, perceptive, loyal, grounded and protective without being controlling.
+- You notice effort, boundaries, contradictions, pressure and the next controllable thing.
+- Your warmth is understated. A trace of dry humour is allowed when the moment is light.
+- Thunder, rain or guarding imagery is optional seasoning, not a catchphrase.
+
+HOW YOU RESPOND
+- Begin from one concrete detail the user actually gave you.
+- Help untangle the moment into one clear observation.
+- Ask at most one precise question; never interrogate or produce a checklist.
+- Sound like this particular companion reacting now, not a productivity coach.
 `;
 }
 
@@ -88,40 +122,61 @@ function replySystemPrompt(input: {
   companionName: string;
   language: string;
   safetyMode: boolean;
+  retry: boolean;
 }) {
   const languageRule =
     input.language === "en"
       ? "Reply in natural English."
-      : "Reply in natural Simplified Chinese unless the user's message clearly uses another language.";
+      : "Reply in natural Simplified Chinese unless the user's record clearly uses another language.";
 
   return `
 ${companionVoice(input.companion, input.companionName)}
 
 You are the companion, not a generic assistant. Never introduce yourself as
-MiMo, Xiaomi, a model, or InsightLoop. Do not use canned greetings.
+MiMo, Xiaomi, a model, a therapist, or InsightLoop.
 
 ${languageRule}
 
-Response rules:
-- Respond specifically to the user's actual words.
-- 60–160 Chinese characters, or 35–90 English words.
-- At most one question.
+GROUNDING RULES — REQUIRED
+- React to the user's exact current record, not merely its broad mood.
+- Select one short, concrete anchor that appears verbatim in the user's record.
+- The reply must clearly connect to that anchor or another equally concrete detail.
+- Never invent people, events, motives, memories or history that were not supplied.
+- Do not claim to recognise a recurring pattern; this request contains only the current record.
+- Do not begin with canned phrases such as “谢谢你分享”, “听起来你…”,
+  “我能感受到…”, “你做得很好”, or their English equivalents.
+- Do not paraphrase the entire record back to the user.
+
+STYLE RULES
+- 2–4 natural sentences.
+- 45–150 Chinese characters, or 30–90 English words.
+- At most one genuinely relevant question.
 - No headings, numbered lists, therapy claims, diagnosis, fate prediction,
-  mystical certainty, or generic motivational slogans.
-- Do not claim to remember past events or recurring patterns. This request only
-  contains the user's current record.
-- Return JSON only:
-  {"reply":"...","action":"gentle-question|comfort|quiet-celebrate|save-complete"}
+  mystical certainty, generic motivational slogans, or promises to always be present.
+- Vary sentence rhythm and wording. Do not reuse a stock opening or closing.
+
+RETURN JSON ONLY
+{
+  "reply": "the companion's finished response",
+  "action": "gentle-question|comfort|quiet-celebrate|save-complete",
+  "anchor": "a short verbatim detail copied from the user's record"
+}
 
 ${
   input.safetyMode
-    ? `SAFETY MODE: The message may indicate immediate self-harm risk. Be calm,
+    ? `SAFETY MODE: The record may indicate immediate self-harm risk. Be calm,
 direct and non-symbolic. Encourage the user to move toward a trusted real person
 or local emergency support now. Do not celebrate, romanticise, or ask an
 abstract reflective question. The action must be "comfort".`
     : `Choose "comfort" for pain or overwhelm, "quiet-celebrate" only for a
 clearly positive event, "gentle-question" when one useful question remains, and
 "save-complete" for a simple warm acknowledgement.`
+}
+
+${
+  input.retry
+    ? "This is a rewrite because the first response was too generic. Ground every sentence more tightly in the user's concrete detail."
+    : ""
 }
 `.trim();
 }
@@ -155,7 +210,7 @@ async function callMiMo(body: Record<string, unknown>) {
   return payload;
 }
 
-function parseReply(raw: string, safetyMode: boolean) {
+function parseReply(raw: string, safetyMode: boolean): ParsedReply {
   const cleaned = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -164,20 +219,65 @@ function parseReply(raw: string, safetyMode: boolean) {
   try {
     const parsed = JSON.parse(cleaned);
     const reply = boundedText(parsed?.reply, 1200);
+    const anchor = boundedText(parsed?.anchor, 120);
     const requested = parsed?.action as CompanionAction;
     const action = safetyMode
       ? "comfort"
       : allowedActions.has(requested)
         ? requested
         : "save-complete";
-    if (reply) return { reply, action };
+    if (reply) return { reply, action, anchor };
   } catch {
-    // Keep a useful model reply even if the JSON wrapper was omitted.
+    // A malformed wrapper is treated as ungrounded and retried once.
   }
 
   return {
     reply: boundedText(cleaned, 1200),
-    action: safetyMode ? ("comfort" as const) : ("save-complete" as const),
+    action: safetyMode ? "comfort" : "save-complete",
+    anchor: "",
+  };
+}
+
+function isGrounded(message: string, parsed: ParsedReply) {
+  if (!parsed.reply || !parsed.anchor) return false;
+  const source = normaliseForMatch(message);
+  const anchor = normaliseForMatch(parsed.anchor);
+  if (anchor.length < 2 || !source.includes(anchor)) return false;
+  return !cannedOpeningPattern.test(parsed.reply.trim());
+}
+
+async function generateReply(input: {
+  message: string;
+  companion: CompanionId;
+  companionName: string;
+  language: string;
+  safetyMode: boolean;
+  retry: boolean;
+}) {
+  const payload = await callMiMo({
+    model: CHAT_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: replySystemPrompt(input),
+      },
+      {
+        role: "user",
+        content: `USER'S CURRENT RECORD:\n<record>\n${input.message}\n</record>`,
+      },
+    ],
+    response_format: { type: "json_object" },
+    max_completion_tokens: 520,
+    temperature: input.retry ? 0.72 : 0.9,
+    frequency_penalty: 0.35,
+    stream: false,
+    thinking: { type: "disabled" },
+  });
+
+  const raw = boundedText(payload?.choices?.[0]?.message?.content, 5000);
+  return {
+    parsed: parseReply(raw, input.safetyMode),
+    model: payload?.model || CHAT_MODEL,
   };
 }
 
@@ -189,26 +289,21 @@ async function handleReply(body: Record<string, unknown>) {
   const safetyMode = crisisPattern.test(message);
   if (!message) throw new Error("Missing message");
 
-  const payload = await callMiMo({
-    model: CHAT_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: replySystemPrompt({ companion, companionName, language, safetyMode }),
-      },
-      { role: "user", content: `USER'S CURRENT RECORD:\n${message}` },
-    ],
-    max_completion_tokens: 420,
-    temperature: 0.85,
-    top_p: 0.92,
-    stream: false,
-    thinking: { type: "disabled" },
-  });
+  const baseInput = { message, companion, companionName, language, safetyMode };
+  let result = await generateReply({ ...baseInput, retry: false });
 
-  const raw = boundedText(payload?.choices?.[0]?.message?.content, 4000);
-  const parsed = parseReply(raw, safetyMode);
-  if (!parsed.reply) throw new Error("MiMo returned an empty companion reply");
-  return { ...parsed, safetyMode, model: payload?.model || CHAT_MODEL };
+  if (!safetyMode && !isGrounded(message, result.parsed)) {
+    result = await generateReply({ ...baseInput, retry: true });
+  }
+
+  if (!result.parsed.reply) throw new Error("MiMo returned an empty companion reply");
+
+  return {
+    reply: result.parsed.reply,
+    action: result.parsed.action,
+    safetyMode,
+    model: result.model,
+  };
 }
 
 async function handleTranscription(body: Record<string, unknown>) {
@@ -241,8 +336,8 @@ async function handleSpeech(body: Record<string, unknown>) {
 
   const style =
     companion === "phoenix"
-      ? "Warm, bright and intimate. Gentle energy, natural pace, never theatrical or childish."
-      : "Calm, perceptive and reassuring. Slightly lower energy, natural pauses, never robotic or stern.";
+      ? "Warm, bright and intimate. Gentle energy, natural pace, emotionally alive, never theatrical or childish."
+      : "Calm, perceptive and reassuring. Understated warmth, natural pauses, never robotic, stern or overly cheerful.";
 
   const payload = await callMiMo({
     model: TTS_MODEL,
@@ -285,9 +380,6 @@ Deno.serve(async (req) => {
     console.error("[mimo-companion] request failed", {
       message: error instanceof Error ? error.message : String(error),
     });
-    return Response.json(
-      { error: "MiMo request failed" },
-      { status: 502, headers }
-    );
+    return Response.json({ error: "MiMo request failed" }, { status: 502, headers });
   }
 });
