@@ -44,10 +44,21 @@ const companionFallback = {
   thunder: { mark: "ϟ", color: "from-sky-300 via-indigo-300 to-violet-300", name: "小雷公" },
 } as const;
 
+const previewMascotBase =
+  "https://raw.githubusercontent.com/passiongrow88/InsightLoop/e0160330eb8a11f796f56388e994af3699830b9b/public/mascots";
+
 function mascotSource(path: string) {
   const configuredBase = import.meta.env.VITE_MASCOT_BASE_URL?.replace(/\/$/, "");
   if (configuredBase) return `${configuredBase}/${path}`;
-  return `/mascots/${path}`;
+
+  const host = window.location.hostname;
+  const sameOrigin =
+    host === "insightloop.lol" ||
+    host === "www.insightloop.lol" ||
+    host === "localhost" ||
+    host === "127.0.0.1";
+  const base = sameOrigin ? "/mascots" : previewMascotBase;
+  return `${base}/${path}`;
 }
 
 function AnimationOrFallback({
