@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - agent/companion-preview-v2
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +30,8 @@ jobs:
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
