@@ -14,18 +14,18 @@ type Screen = "landing" | "login" | "register";
 
 const copy = {
   zh: {
-    eyebrow: "不是陪聊，而是一颗会记得你的大脑",
-    title: "当熟悉的路口再次出现，\n看见这一次仍然有选择。",
-    body: "记录今天的故事、梦境和选择。InsightLoop 会在真实日期与原话的基础上，陪你看见重复，也看见你已经不同的地方。",
+    eyebrow: "把散落的经历，慢慢连成轨迹",
+    title: "记下今天，\n看见生活如何重复。",
+    body: "你只需要写下发生了什么。随着记录累积，InsightLoop 会从真实日期和原话中，找出反复出现的处境、选择与变化。",
     primary: "开始第一段记录",
     login: "已有账号登录",
-    privacy: "你的记录由你掌控。AI 的理解可以被修改或否定。",
+    privacy: "原话永远保留；任何解读都只是线索，不替你下结论。",
     today: "今天",
-    todayText: "我明明不同意，却还是没有说。",
+    todayText: "会议上我不同意，最后还是说了“好”。",
     memory: "过去的你",
-    memoryText: "我怕说出来以后，大家会觉得我难相处。",
+    memoryText: "3 月 12 日｜“我怕拒绝后让关系变僵。”",
     insight: "这一次的不同",
-    insightText: "你已经开始在意：沉默是否仍是你想要的选择。",
+    insightText: "两次都在担心关系变僵；这一次，你已经先看见了这个顾虑。",
     loginTitle: "欢迎回来",
     registerTitle: "开始认识自己",
     name: "名字",
@@ -37,16 +37,17 @@ const copy = {
     switchLogin: "已经有账号？返回登录",
     working: "处理中…",
     back: "返回介绍",
-    registered: "注册成功。请先验证邮箱，然后再登录。",
+    registered: "验证邮件已发送。请检查收件箱与垃圾邮件。",
+    existing: "这个邮箱已经注册过，不会再次发送注册邮件。请直接登录。",
     invalid: "请输入有效的邮箱和密码。",
   },
   en: {
-    eyebrow: "Not a chat pet — a mind that remembers you",
-    title: "When a familiar crossroads returns,\nsee that you still have a choice.",
-    body: "Record today's stories, dreams and choices. InsightLoop uses real dates and your own words to reveal repetition—and where you have already changed.",
+    eyebrow: "Turn scattered moments into a visible path",
+    title: "Keep today.\nSee how life repeats.",
+    body: "Write down what happened. As your records grow, InsightLoop uses real dates and your own words to reveal recurring situations, choices and change.",
     primary: "Start my first record",
     login: "I already have an account",
-    privacy: "Your records stay under your control. You can edit or reject every AI interpretation.",
+    privacy: "Your original words stay intact. Every interpretation is a clue, never a verdict.",
     today: "Today",
     todayText: "I disagreed, but I still said nothing.",
     memory: "A past moment",
@@ -64,7 +65,8 @@ const copy = {
     switchLogin: "Already registered? Sign in",
     working: "Working…",
     back: "Back to introduction",
-    registered: "Registered. Please verify your email, then sign in.",
+    registered: "Verification email sent. Check your inbox and spam folder.",
+    existing: "This email is already registered, so no new signup email was sent. Please sign in instead.",
     invalid: "Enter a valid email and password.",
   },
 } as const;
@@ -106,6 +108,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
           },
         });
         if (signUpError) throw signUpError;
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          setError(c.existing);
+          setScreen("login");
+          return;
+        }
         if (data.user && !data.user.email_confirmed_at) {
           setNotice(c.registered);
           setScreen("login");
@@ -159,7 +166,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
         <section className="mx-auto grid min-h-[calc(100vh-86px)] max-w-6xl items-center gap-10 px-5 pb-16 pt-6 sm:px-8 lg:grid-cols-[1.05fr_.95fr]">
           <div className="max-w-2xl">
             <p className="mb-5 text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">{c.eyebrow}</p>
-            <h1 className="whitespace-pre-line font-serif text-4xl font-semibold leading-[1.18] text-stone-800 sm:text-6xl">{c.title}</h1>
+            <h1 className="max-w-[680px] whitespace-pre-line font-serif text-4xl font-semibold leading-[1.12] text-stone-800 sm:text-5xl lg:text-[54px]">{c.title}</h1>
             <p className="mt-6 max-w-xl text-base leading-8 text-stone-600 sm:text-lg">{c.body}</p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">

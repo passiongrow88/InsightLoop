@@ -226,6 +226,7 @@ export default function DailyRecord({
   const streamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
   const replyAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   const history = useMemo(() => toHistory(entries), [entries]);
   const fieldLabels = language === "en" ? FIELD_LABEL_EN : FIELD_LABEL_ZH;
@@ -241,6 +242,8 @@ export default function DailyRecord({
     () => () => {
       if (recordingTimerRef.current) window.clearTimeout(recordingTimerRef.current);
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      try { speechRecognitionRef.current?.abort?.(); } catch {}
+      window.speechSynthesis?.cancel();
       replyAudioRef.current?.pause();
     },
     []
@@ -249,7 +252,28 @@ export default function DailyRecord({
   const opening =
     language === "en"
       ? "What happened today? Start with the moment you most want to keep."
-      : "今天发生了什么？从你最想留下的那个瞬间说起就好。";
+      : "今天有什么想留下的？从一个具体瞬间开始就好。";
+
+  const speakWithBrowser = (words: string) =>
+    new Promise<void>((resolve, reject) => {
+      if (!("speechSynthesis" in window)) {
+        reject(new Error("Browser speech synthesis is unavailable."));
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(words);
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find((voice) =>
+        language === "en" ? voice.lang.toLowerCase().startsWith("en") : voice.lang.toLowerCase().startsWith("zh")
+      );
+      if (preferred) utterance.voice = preferred;
+      utterance.lang = language === "en" ? "en-SG" : "zh-CN";
+      utterance.rate = companion === "phoenix" ? 0.96 : 0.92;
+      utterance.pitch = companion === "phoenix" ? 1.04 : 0.92;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => reject(new Error("Browser speech playback failed."));
+      window.speechSynthesis.speak(utterance);
+    });
 
   const playReply = async (text = [visibleReply, saved ? "" : question].filter(Boolean).join(" ")) => {
     if (!text || isSpeaking) return;
@@ -261,14 +285,24 @@ export default function DailyRecord({
       const audio = new Audio(source);
       replyAudioRef.current = audio;
       audio.onended = () => setIsSpeaking(false);
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        setVoiceError(language === "en" ? "Voice playback failed." : "伙伴暂时没能播放声音。 ");
+      audio.onerror = async () => {
+        try {
+          await speakWithBrowser(text);
+        } catch {
+          setVoiceError(language === "en" ? "Voice playback failed." : "声音暂时无法播放。 ");
+        } finally {
+          setIsSpeaking(false);
+        }
       };
       await audio.play();
     } catch {
-      setVoiceError(language === "en" ? "Voice is temporarily unavailable." : "伙伴的声音暂时没有连上。 ");
-      setIsSpeaking(false);
+      try {
+        await speakWithBrowser(text);
+      } catch {
+        setVoiceError(language === "en" ? "Voice is temporarily unavailable." : "声音暂时无法播放。 ");
+      } finally {
+        setIsSpeaking(false);
+      }
     }
   };
 
@@ -277,12 +311,86 @@ export default function DailyRecord({
       window.clearTimeout(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch {}
+      return;
+    }
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
   };
 
   const startRecording = async () => {
     setVoiceError("");
+
+    const BrowserRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (BrowserRecognition) {
+      const recognition = new BrowserRecognition();
+      const existingInput = input.trim();
+      let transcript = "";
+      let failed = false;
+      recognition.lang = language === "en" ? "en-SG" : "zh-CN";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      speechRecognitionRef.current = recognition;
+
+      recognition.onresult = (event: any) => {
+        let combined = "";
+        for (let index = 0; index < event.results.length; index += 1) {
+          combined += event.results[index]?.[0]?.transcript || "";
+        }
+        transcript = combined.trim();
+        if (transcript) {
+          setInput(existingInput ? `${existingInput}
+${transcript}` : transcript);
+          setAction("listening");
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        failed = true;
+        const code = String(event?.error || "");
+        setVoiceError(
+          language === "en"
+            ? code === "not-allowed"
+              ? "Microphone permission was blocked. Allow it in the address bar and try again."
+              : code === "audio-capture"
+                ? "No working microphone was found."
+                : "No speech was recognised. Please try again."
+            : code === "not-allowed"
+              ? "麦克风权限被阻止了。请在浏览器地址栏允许麦克风后再试。"
+              : code === "audio-capture"
+                ? "没有找到可用的麦克风。"
+                : "没有识别到清楚的语音，请再试一次。"
+        );
+      };
+
+      recognition.onend = () => {
+        if (recordingTimerRef.current) window.clearTimeout(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+        speechRecognitionRef.current = null;
+        setIsRecording(false);
+        if (transcript) {
+          setVoiceInput(true);
+          setSaved(false);
+          setAction("listening");
+        } else if (!failed) {
+          setAction("idle-breathe");
+          setVoiceError(language === "en" ? "No speech was captured." : "没有录到清楚的声音，请再试一次。 ");
+        }
+      };
+
+      try {
+        recognition.start();
+        setIsRecording(true);
+        setAction("voice-listening");
+        recordingTimerRef.current = window.setTimeout(stopRecording, 60_000);
+        return;
+      } catch {
+        speechRecognitionRef.current = null;
+      }
+    }
+
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setVoiceError(language === "en" ? "This browser cannot record audio." : "这个浏览器暂不支持录音。 ");
       return;
@@ -316,13 +424,18 @@ export default function DailyRecord({
         setAction("thinking");
         try {
           const result = await transcribeCompanionAudio(blob);
-          setInput((previous) => (previous.trim() ? `${previous.trim()}\n${result.transcript}` : result.transcript));
+          setInput((previous) => (previous.trim() ? `${previous.trim()}
+${result.transcript}` : result.transcript));
           setVoiceInput(true);
           setSaved(false);
           setAction("listening");
         } catch {
           setAction("idle-breathe");
-          setVoiceError(language === "en" ? "I could not understand that recording." : "伙伴暂时没能听清，请再试一次。 ");
+          setVoiceError(
+            language === "en"
+              ? "The recording was captured, but transcription failed. Please type this one instead."
+              : "声音已经录到，但转成文字失败了。请先用文字输入这一段。"
+          );
         } finally {
           setIsTranscribing(false);
         }
@@ -589,15 +702,6 @@ export default function DailyRecord({
         {visibleReply && (
           <div className="rounded-3xl bg-white/85 px-5 py-5 text-left shadow-[0_14px_45px_rgba(95,72,46,.07)] ring-1 ring-stone-100">
             <p className="whitespace-pre-line text-[15px] leading-7 text-stone-700">{visibleReply}</p>
-
-            {!saved && observation && (
-              <div className="mt-4 border-l-2 border-amber-200 pl-4">
-                <p className="text-xs text-amber-700/70">
-                  {language === "en" ? "What I may be hearing…" : "我听见的可能是……"}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-stone-600">{observation}</p>
-              </div>
-            )}
 
             {changeEvidence && (
               <div className="mt-4 rounded-2xl bg-emerald-50/70 px-4 py-3">

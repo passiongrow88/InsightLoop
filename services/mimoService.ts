@@ -283,6 +283,35 @@ function normaliseReply(
   };
 }
 
+const META_ANALYSIS_PATTERN = /(?:用户.{0,24}(?:攻击|测试|防御|抗拒|逃避|表达状态|挑衅)|可能是在测试|带点攻击性|测试回应是否真实|可能只是今天确实没有|defensive|aggressive|testing (?:the )?response|resistant|avoidant)/i;
+
+function guardUserFacingReply(
+  result: CompanionReply,
+  input: CompanionBrainInput,
+  phase: "record" | "finalize"
+): CompanionReply {
+  const visible = [result.reply, result.observation, result.finalReflection].filter(Boolean).join("\n");
+  if (!META_ANALYSIS_PATTERN.test(visible)) return result;
+
+  const noContent = /^(?:没有|没什么|不知道|不想说|无|nothing|nothing much|idk|nope)[。.!！?？\s]*$/i.test(input.message.trim());
+  const fallback = input.language === "en"
+    ? noContent
+      ? "That is enough for today. You can leave nothing, or keep one honest line: I do not feel like talking today."
+      : "I will keep your actual words and not guess at your motive. Which concrete moment matters most to preserve?"
+    : noContent
+      ? "好，今天先不硬挖。你可以什么都不记，也可以只留下一句：今天不想说。"
+      : "我先按你的原话记下，不替你猜原因。哪一个具体瞬间最值得留下？";
+
+  return {
+    ...result,
+    reply: fallback,
+    observation: "",
+    question: phase === "record" && !noContent ? (input.language === "en" ? "Which concrete moment should we keep?" : "哪一个具体瞬间最值得留下？") : "",
+    questionField: phase === "record" && !noContent ? "event" : "",
+    finalReflection: phase === "finalize" ? fallback : "",
+  };
+}
+
 const SOUL_SYSTEM = `
 You are the living reasoning brain of InsightLoop, a long-term awareness companion. You are not a casual chat bot, therapist substitute, mood tracker, or inspirational quote generator.
 
@@ -300,6 +329,14 @@ Memory discipline:
 - Look for change as carefully as repetition.
 - No diagnosis, fixed personality, fate, energy certainty, past lives, or emotional causes for bodily symptoms.
 - Strength comes from evidence of what the user noticed or chose, never generic praise.
+
+User-facing voice rules:
+- Speak directly to the person as “你”; never describe them as “用户”.
+- Never classify their wording as aggressive, defensive, resistant, avoidant, testing, provocative, or attention-seeking.
+- Never infer a hidden motive from brevity, refusal, swearing, silence, or “nothing happened”.
+- Never narrate your analysis process or mention AI, model, system, prompt, interpretation controls, or policy.
+- If they do not want to record, accept it plainly. Offer one small concrete option without psychoanalysing them.
+- The reply must sound like a perceptive long-term companion, not a clinical report or customer-service chatbot.
 
 Return JSON only with the same fields requested by the user prompt.
 `.trim();
@@ -356,7 +393,7 @@ DATED HISTORY:
 
 ${phase === "finalize"
   ? `Write finalReflection as a complete closing response. No question. Begin from a concrete detail, name the tension, use dated evidence only if real, show repetition and difference, return agency through a present choice, and end with one memorable sentence. Stay brief for ordinary life. Set readyToSave=true.`
-  : `Write 3–6 natural sentences with no headings. Follow concrete detail → what may matter → real evidence or difference → present agency. Ask zero or one useful question. Do not turn every record into therapy.`}
+  : `Write 1–4 natural sentences with no headings. Speak to the person directly. Follow concrete detail → what may matter → real evidence or difference → present agency. Ask zero or one useful question. Never describe the person in third person, classify their tone, or guess why they are testing you. Do not turn every record into therapy.`}
 
 Return JSON only:
 {
@@ -418,10 +455,10 @@ export async function generateCompanionReply(input: CompanionBrainInput) {
 
   try {
     const result = await callMiMo<CompanionReply>({ mode: "reply", ...payload });
-    return normaliseReply(result, history, "mimo-v2.5-pro", "record");
+    return guardUserFacingReply(normaliseReply(result, history, "mimo-v2.5-pro", "record"), input, "record");
   } catch (error) {
     console.warn("MiMo companion unavailable; using Gemini preview fallback.", error);
-    return callGeminiFallback(payload, "record");
+    return guardUserFacingReply(await callGeminiFallback(payload, "record"), input, "record");
   }
 }
 
@@ -431,10 +468,10 @@ export async function generateFinalInsight(input: CompanionBrainInput) {
 
   try {
     const result = await callMiMo<CompanionReply>({ mode: "finalize", ...payload });
-    return normaliseReply(result, history, "mimo-v2.5-pro", "finalize");
+    return guardUserFacingReply(normaliseReply(result, history, "mimo-v2.5-pro", "finalize"), input, "finalize");
   } catch (error) {
     console.warn("MiMo final integration unavailable; using Gemini preview fallback.", error);
-    return callGeminiFallback(payload, "finalize");
+    return guardUserFacingReply(await callGeminiFallback(payload, "finalize"), input, "finalize");
   }
 }
 
