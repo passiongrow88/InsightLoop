@@ -1,0 +1,46 @@
+name: Apply Founder P0 Feedback
+
+on:
+  push:
+    branches:
+      - agent/companion-preview-v2
+    paths:
+      - scripts/apply_founder_p0_feedback.py
+      - .github/workflows/apply-founder-p0-feedback.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/companion-preview-v2
+          fetch-depth: 0
+
+      - name: Apply P0 feedback patches
+        run: python scripts/apply_founder_p0_feedback.py
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify build
+        run: npm run build
+
+      - name: Commit verified fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/Auth.tsx components/DailyRecord.tsx services/mimoService.ts supabase/functions/mimo-companion/index.ts
+          git commit -m "Fix founder P0 voice, signup and companion copy" || exit 0
+          git push origin HEAD:agent/companion-preview-v2
