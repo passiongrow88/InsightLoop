@@ -27,7 +27,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
-      - name: Allow the public Preview CDN origin
+      - name: Remove obsolete third-party Preview origins
         if: github.event_name == 'push'
         shell: bash
         run: |
@@ -35,8 +35,8 @@ jobs:
           from pathlib import Path
           path = Path('supabase/functions/mimo-companion/index.ts')
           text = path.read_text(encoding='utf-8')
-          old = 'Boolean(origin?.endsWith(".vercel.app"));'
-          new = '(Boolean(origin?.endsWith(".vercel.app")) || origin === "https://raw.githack.com" || origin === "https://rawcdn.githack.com");'
+          old = '(Boolean(origin?.endsWith(".vercel.app")) || origin === "https://raw.githack.com" || origin === "https://rawcdn.githack.com");'
+          new = 'Boolean(origin?.endsWith(".vercel.app"));'
           if old in text:
               path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
@@ -45,7 +45,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add supabase/functions/mimo-companion/index.ts
-            git commit -m "Allow authenticated soul preview origin [skip ci]"
+            git commit -m "Remove obsolete third-party Preview origins [skip ci]"
             git push origin HEAD:agent/companion-preview-v2
           fi
 
