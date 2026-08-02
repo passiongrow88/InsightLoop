@@ -2,6 +2,8 @@
 
 export type Language = "zh" | "en";
 
+export type CompanionId = "phoenix" | "thunder";
+
 export type ViewType =
   | "home"
   | "journal"
@@ -12,9 +14,13 @@ export type ViewType =
   | "admin";        // âœ… æ–°å¢žï¼šç®¡ç†å‘˜åŽå°
 
 export interface User {
+  id: string;
   email: string;
   name?: string;
   reminderTime?: string;
+  companion?: CompanionId;
+  companionName?: string;
+  companionChosenAt?: string;
 }
 
 export interface JournalEntry {
@@ -72,5 +78,4 @@ export interface Resource {
   is_active: boolean;
   created_at: string;
 }
-
 

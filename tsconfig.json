@@ -26,6 +26,7 @@
     ".vercel",
     "_backup_ignore",
     "backup",
+    "supabase/functions",
     "vite.config.*"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]

@@ -25,10 +25,10 @@ const Layout: React.FC<LayoutProps> = ({
   const t = translations[language];
 
   // ✅ 不依赖 i18n 新增字段，避免你还要去改 translations
-  const unlockLabel = language === 'zh' ? '解锁体验' : 'Unlock';
+  const unlockLabel = language === 'zh' ? '升级会员' : 'Upgrade';
   const memberSpaceLabel = language === 'zh' ? '会员空间' : 'Member Space';
 
-  const NavItem = ({ view, icon: Icon, label }: { view: ViewType; icon: any; label: string }) => (
+  const NavItem = ({ view, icon: Icon, label, alwaysLabel = false }: { view: ViewType; icon: any; label: string; alwaysLabel?: boolean }) => (
     <button
       onClick={() => setCurrentView(view)}
       className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 font-medium whitespace-nowrap ${
@@ -38,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({
       } text-xs`}
     >
       <Icon size={16} />
-      <span className="hidden sm:inline leading-none whitespace-nowrap">{label}</span>
+      <span className={`${alwaysLabel ? 'inline' : 'hidden sm:inline'} leading-none whitespace-nowrap`}>{label}</span>
     </button>
   );
 
@@ -61,19 +61,15 @@ const Layout: React.FC<LayoutProps> = ({
               </span>
             </div>
 
-            {/* Navigation & User Actions */}
+            {/* Core product and paid spaces must remain reachable from every screen. */}
             <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
               <nav className="flex items-center gap-1 bg-white p-1 rounded-full border border-brand-100 shadow-sm overflow-x-auto max-w-full">
                 <NavItem view="home" icon={Home} label={t.nav_home} />
                 <NavItem view="journal" icon={BookOpen} label={t.nav_journal} />
                 <NavItem view="manifestation" icon={Sparkles} label={t.nav_manifestation} />
                 <NavItem view="history" icon={History} label={t.nav_history} />
-
-                {/* ✅ 会员空间导航 */}
-                <NavItem view="member-space" icon={Gift} label={memberSpaceLabel} />
-
-                {/* ✅ 解锁体验（Billing） */}
-                <NavItem view="billing" icon={Crown} label={unlockLabel} />
+                <NavItem view="member-space" icon={Gift} label={memberSpaceLabel} alwaysLabel />
+                <NavItem view="billing" icon={Crown} label={unlockLabel} alwaysLabel />
               </nav>
 
               <div className="flex items-center gap-3">

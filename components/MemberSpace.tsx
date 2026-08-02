@@ -27,7 +27,7 @@ interface MemberSpaceProps {
 const MemberSpace: React.FC<MemberSpaceProps> = ({ language, setCurrentView }) => {
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userPlan, setUserPlan] = useState<'free' | 'pro'>('free');
+  const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'founder'>('free');
   const [purchasedResourceIds, setPurchasedResourceIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -185,7 +185,7 @@ const MemberSpace: React.FC<MemberSpaceProps> = ({ language, setCurrentView }) =
   // 检查用户是否可以访问资源
   const canAccess = (resource: Resource): boolean => {
     if (resource.access_level === 'free') return true;
-    if (resource.access_level === 'pro') return userPlan === 'pro';
+    if (resource.access_level === 'pro') return userPlan === 'pro' || userPlan === 'founder';
     if (resource.access_level === 'paid') return purchasedResourceIds.has(resource.id);
     return false;
   };
@@ -312,7 +312,7 @@ const MemberSpace: React.FC<MemberSpaceProps> = ({ language, setCurrentView }) =
           <div className="flex flex-wrap items-center gap-4">
             {/* 当前计划标签 */}
             <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full text-sm">
-              {userPlan === 'pro' ? (
+              {userPlan === 'pro' || userPlan === 'founder' ? (
                 <>
                   <Crown className="w-4 h-4 text-yellow-300" />
                   <span className="font-medium">{text.proPlan}</span>

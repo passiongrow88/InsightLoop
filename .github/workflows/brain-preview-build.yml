@@ -1,0 +1,143 @@
+name: InsightLoop Soul Preview
+
+on:
+  push:
+    branches:
+      - agent/companion-preview-v2
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: insightloop-soul-preview-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Remove obsolete third-party Preview origins
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('supabase/functions/mimo-companion/index.ts')
+          text = path.read_text(encoding='utf-8')
+          old = '(Boolean(origin?.endsWith(".vercel.app")) || origin === "https://raw.githack.com" || origin === "https://rawcdn.githack.com");'
+          new = 'Boolean(origin?.endsWith(".vercel.app"));'
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          if ! git diff --quiet -- supabase/functions/mimo-companion/index.ts; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add supabase/functions/mimo-companion/index.ts
+            git commit -m "Remove obsolete third-party Preview origins [skip ci]"
+            git push origin HEAD:agent/companion-preview-v2
+          fi
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Preview
+        run: npm run build
+
+      - name: Create self-contained browser Preview
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          import gzip
+          import json
+          import re
+
+          dist = Path('dist')
+          html = (dist / 'index.html').read_text(encoding='utf-8')
+          main_match = re.search(r'<script type="module"[^>]*src="([^"]+)"', html)
+          css_match = re.search(r'<link rel="stylesheet"[^>]*href="([^"]+)"', html)
+          if not main_match or not css_match:
+              raise SystemExit('Unable to identify Vite assets')
+
+          main_name = Path(main_match.group(1)).name
+          css_name = Path(css_match.group(1)).name
+          main_js = (dist / 'assets' / main_name).read_text(encoding='utf-8')
+          app_match = re.search(r'\.\/((?:App)-[A-Za-z0-9_-]+\.js)', main_js)
+          if not app_match:
+              raise SystemExit('Unable to identify the lazy App chunk')
+          app_name = app_match.group(1)
+          app_js = (dist / 'assets' / app_name).read_text(encoding='utf-8')
+          css = (dist / 'assets' / css_name).read_text(encoding='utf-8')
+
+          export_match = re.search(r'export\{([A-Za-z_$][\w$]*) as j,([A-Za-z_$][\w$]*) as r\};?$', main_js)
+          import_match = re.match(r'import\{r as ([A-Za-z_$][\w$]*),j as ([A-Za-z_$][\w$]*)\}from"\.\/index-[^"]+";', app_js)
+          root_marker = 'const rc=document.getElementById("root");'
+          if not export_match or not import_match or root_marker not in main_js:
+              raise SystemExit('Unable to break the Vite circular chunk dependency safely')
+
+          jsx_source, react_source = export_match.group(1), export_match.group(2)
+          react_local, jsx_local = import_match.group(1), import_match.group(2)
+          app_js = app_js[import_match.end():]
+          app_js = f'const {react_local}=globalThis.__IL_REACT,{jsx_local}=globalThis.__IL_JSX;' + app_js
+          main_js = main_js.replace(
+              root_marker,
+              f'globalThis.__IL_REACT={react_source};globalThis.__IL_JSX={jsx_source};{root_marker}',
+              1,
+          )
+
+          def packed(value: str) -> str:
+              return base64.b64encode(gzip.compress(value.encode('utf-8'), compresslevel=9)).decode('ascii')
+
+          payload = json.dumps({
+              'app': packed(app_js),
+              'index': packed(main_js),
+              'css': packed(css),
+              'appName': app_name,
+          }, separators=(',', ':'))
+
+          output = f'''<!doctype html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InsightLoop Soul Preview</title></head><body><div id="root"></div><script>
+          const payload={payload};
+          async function ungzip(b64){{const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(stream).text();}}
+          (async()=>{{const [app,index,css]=await Promise.all([ungzip(payload.app),ungzip(payload.index),ungzip(payload.css)]);const style=document.createElement('style');style.textContent=css;document.head.appendChild(style);const appUrl=URL.createObjectURL(new Blob([app],{{type:'text/javascript'}}));const patched=index.replaceAll('./'+payload.appName,appUrl);const indexUrl=URL.createObjectURL(new Blob([patched],{{type:'text/javascript'}}));await import(indexUrl);}})().catch(err=>{{console.error(err);document.body.innerHTML='<pre style="padding:24px">Preview failed to start: '+String(err)+'</pre>';}});
+          </script></body></html>'''
+
+          publish = Path('preview-publish')
+          publish.mkdir(exist_ok=True)
+          (publish / 'index.html').write_text(output, encoding='utf-8')
+          print(f'Preview HTML: {len(output.encode("utf-8"))} bytes')
+          PY
+
+      - name: Upload compiled Preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: insightloop-soul-preview-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Publish Preview branch
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./preview-publish
+          publish_branch: gh-pages
+          force_orphan: true

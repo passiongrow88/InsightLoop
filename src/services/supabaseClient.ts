@@ -1,13 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "Missing Supabase env vars: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY"
-  );
-}
+// Supabase's publishable client configuration is intentionally safe to ship
+// in a browser bundle. Service-role credentials must never be added here.
+const publicSupabaseUrl = "https://hiipbyrdkdaetroajrwk.supabase.co";
+const publicSupabaseAnonKey = "sb_publishable_WZ9n5t3bXwvimVTKVDqvXA_-TOG51hC";
+const supabaseUrl =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) || publicSupabaseUrl;
+const supabaseAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || publicSupabaseAnonKey;
 
 export const supabase = createClient(
   supabaseUrl,
