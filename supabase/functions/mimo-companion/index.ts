@@ -46,7 +46,7 @@ function cors(origin: string | null) {
     origin === "https://insightloop.lol" ||
     origin === "https://www.insightloop.lol" ||
     origin === "http://localhost:5173" ||
-    Boolean(origin?.endsWith(".vercel.app"));
+    (Boolean(origin?.endsWith(".vercel.app")) || origin === "https://raw.githack.com" || origin === "https://rawcdn.githack.com");
   return {
     "Access-Control-Allow-Origin": allowed && origin ? origin : "https://insightloop.lol",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
