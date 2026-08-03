@@ -1,0 +1,26 @@
+# InsightLoop V5 Windsurf Rules
+
+Always read `AGENTS.md` and every canonical document in `docs/v5/` before editing code.
+
+The latest founder-approved `LOCKED` decision is authoritative.
+
+## Product invariants
+
+- InsightLoop V5 begins in a warm fixed-angle 2.5D private study.
+- The journal preserves the user’s confirmed original words on the left page.
+- InsightLoop writes the right-page response.
+- The companion beast is a diary administrator and historical guide, not the standard response voice.
+- The ship’s wheel stores user-confirmed direction/action/outcome.
+- The dreamcatcher stores and searches dreams without prophecy.
+- The old player uses only documented lawful music.
+
+## Engineering invariants
+
+- Do not replace the study with a dashboard, card grid, login wall, or chat page.
+- Do not expose internal motive/personality speculation.
+- Do not claim a pattern without at least two different dated structurally similar records and validated evidence.
+- Do not fix technical problems by hiding, deleting, faking, weakening, or replacing the approved experience.
+- Do not modify `main`, production, `insightloop.lol`, production data/auth/keys/migrations/entitlements without founder approval.
+- Do not report completion from build success alone.
+
+Follow `docs/v5/V5_TECHNICAL_GUARDRAILS.md` for blockers and `docs/v5/V5_ACCEPTANCE_TESTS.md` for release evidence.
