@@ -20,6 +20,7 @@ The documents also establish one mandatory engineering rule:
 4. [`V5_ACCEPTANCE_TESTS.md`](./V5_ACCEPTANCE_TESTS.md)
 5. [`V5_DECISION_LOG.md`](./V5_DECISION_LOG.md)
 6. [`V5_UNIFIED_VIBE_PROMPT.md`](./V5_UNIFIED_VIBE_PROMPT.md)
+7. [`V5_ENVIRONMENT_ADAPTERS.md`](./V5_ENVIRONMENT_ADAPTERS.md)
 
 ## Authority order
 
@@ -53,7 +54,7 @@ The repository includes environment-specific entry files that point back to this
 - `/.cursor/rules/insightloop-v5.mdc` — Cursor
 - `/.windsurfrules` — Windsurf
 
-For Lovable, Bolt, Replit Agent, v0, or another vibe-coding tool, paste the canonical prompt in `V5_UNIFIED_VIBE_PROMPT.md` before requesting implementation.
+For Lovable, Bolt, Replit Agent, v0, or another vibe-coding tool, use the canonical prompt in `V5_UNIFIED_VIBE_PROMPT.md` and the loading steps in `V5_ENVIRONMENT_ADAPTERS.md`.
 
 ## Release rule
 
