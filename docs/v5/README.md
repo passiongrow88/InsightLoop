@@ -22,6 +22,10 @@ The documents also establish one mandatory engineering rule:
 6. [`V5_UNIFIED_VIBE_PROMPT.md`](./V5_UNIFIED_VIBE_PROMPT.md)
 7. [`V5_ENVIRONMENT_ADAPTERS.md`](./V5_ENVIRONMENT_ADAPTERS.md)
 
+## Supporting implementation registers
+
+- [`V5_VISUAL_AUDIO_ASSET_GAP_REGISTER.md`](./V5_VISUAL_AUDIO_ASSET_GAP_REGISTER.md) — verified inventory, reusable mascot mapping, visual/audio gaps, formats, sizes, dependencies, acceptance criteria, and the minimum P0 launch asset pack.
+
 ## Authority order
 
 When documents conflict, use this order:
