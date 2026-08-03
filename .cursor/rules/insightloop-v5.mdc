@@ -1,0 +1,31 @@
+---
+description: Mandatory InsightLoop V5 product and engineering guardrails
+alwaysApply: true
+---
+
+Read and obey:
+
+1. `AGENTS.md`
+2. `docs/v5/V5_PRODUCT_CONSTITUTION.md`
+3. `docs/v5/V5_POD.md`
+4. `docs/v5/V5_TECHNICAL_GUARDRAILS.md`
+5. `docs/v5/V5_ACCEPTANCE_TESTS.md`
+6. `docs/v5/V5_DECISION_LOG.md`
+
+Do not infer product truth from legacy UI when it conflicts with locked V5 decisions.
+
+Mandatory invariants:
+
+- First meaningful screen is a warm 2.5D study, not a dashboard/login/chat page.
+- User original journal text is preserved on the left page.
+- The right page is the InsightLoop response.
+- Companion beasts are diary administrators and archive guides, not the standard response voice.
+- Ship’s wheel directions require user confirmation.
+- Dreamcatcher is an evidence-based dream archive, not prophecy.
+- One related dated record is not a pattern.
+- Internal speculation about user aggression, defence, avoidance, resistance, or testing is never user-facing.
+- Technical blockers must be solved without deleting, hiding, faking, replacing, or downgrading the confirmed requirement.
+- No unapproved changes to `main`, production, `insightloop.lol`, auth, data, keys, migrations, or entitlements.
+
+Before completion, run relevant V5 acceptance tests and report evidence using only:
+`VERIFIED`, `PARTIALLY VERIFIED`, `BLOCKED`, or `UNKNOWN`.
