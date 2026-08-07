@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - v5/p0-implementation
+  pull_request:
+    branches:
+      - v5/product-operating-system
   workflow_dispatch:
 
 permissions:
