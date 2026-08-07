@@ -1,0 +1,38 @@
+name: InsightLoop V5 Preview Build
+
+on:
+  push:
+    branches:
+      - v5/p0-implementation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout V5 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Upload V5 preview dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: insightloop-v5-preview-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
