@@ -1,0 +1,292 @@
+import React, { useMemo, useRef, useState } from "react";
+import { BookOpen, ChevronRight, Compass, Headphones, LogIn, MoonStar, Music2, Pause, Play, Sparkles, Volume2, X } from "lucide-react";
+import { JournalEntry, Language, User } from "../../types";
+import { V5_ASSETS } from "../../src/v5/assetManifest";
+import V5AssetVideo from "./V5AssetVideo";
+import V5JournalBook from "./V5JournalBook";
+
+interface Props {
+  language: Language;
+  currentUser: User | null;
+  entries: JournalEntry[];
+  onRequestAuth: () => void;
+  onSaveEntry: (entry: JournalEntry) => Promise<void>;
+  onLogout: () => Promise<void>;
+}
+
+type Overlay = null | "egg" | "dreams" | "wheel" | "player";
+type Effect = null | "dream" | "player" | "egg" | "wheel";
+
+const V5StudyShell: React.FC<Props> = ({
+  language,
+  currentUser,
+  entries,
+  onRequestAuth,
+  onSaveEntry,
+  onLogout,
+}) => {
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [effect, setEffect] = useState<Effect>(null);
+  const [musicUrl, setMusicUrl] = useState<string>("");
+  const [musicName, setMusicName] = useState<string>("");
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const zh = language === "zh";
+  const uniqueRecordDays = useMemo(
+    () => new Set(entries.map((entry) => entry.date).filter(Boolean)).size,
+    [entries],
+  );
+  const hatchProgress = Math.min(7, uniqueRecordDays);
+  const dreams = useMemo(
+    () => entries
+      .filter((entry) => (entry.dreams || "").trim())
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+    [entries],
+  );
+
+  const openEffect = (next: Exclude<Effect, null>, nextOverlay: Exclude<Overlay, null>) => {
+    setEffect(next);
+    setOverlay(nextOverlay);
+  };
+
+  const effectAsset = effect === "dream"
+    ? V5_ASSETS.dreamcatcherReceive
+    : effect === "player"
+      ? V5_ASSETS.recordPlayerStart
+      : effect === "egg"
+        ? V5_ASSETS.eggDay7
+        : effect === "wheel"
+          ? V5_ASSETS.shipWheelConfirm
+          : null;
+
+  const chooseLocalMusic = (file?: File) => {
+    if (!file) return;
+    if (musicUrl) URL.revokeObjectURL(musicUrl);
+    const url = URL.createObjectURL(file);
+    setMusicUrl(url);
+    setMusicName(file.name);
+    setMusicPlaying(false);
+  };
+
+  const toggleMusic = async () => {
+    const audio = audioRef.current;
+    if (!audio || !musicUrl) return;
+    if (audio.paused) {
+      await audio.play();
+      setMusicPlaying(true);
+    } else {
+      audio.pause();
+      setMusicPlaying(false);
+    }
+  };
+
+  return (
+    <main className="relative h-[100dvh] w-full overflow-hidden bg-[#241a13] text-[#fff8eb]">
+      <picture className="absolute inset-0">
+        <source media="(max-width: 767px)" srcSet={V5_ASSETS.studyMobile.poster} />
+        <img
+          src={V5_ASSETS.studyDesktop.poster}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      </picture>
+
+      <div className="absolute inset-0 hidden md:block">
+        <V5AssetVideo
+          asset={V5_ASSETS.studyDesktop}
+          label="InsightLoop 温暖书房"
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="h-full w-full object-cover"
+        />
+      </div>
+      <div className="absolute inset-0 md:hidden">
+        <V5AssetVideo
+          asset={V5_ASSETS.studyMobile}
+          label="InsightLoop 手机书房"
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="h-full w-full object-cover"
+        />
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/20" />
+
+      <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between p-4 sm:p-6">
+        <div className="rounded-full bg-[#2a1d14]/35 px-4 py-2 font-serif text-sm tracking-[0.18em] text-[#fff5e6]/90 backdrop-blur-sm">
+          INSIGHTLOOP
+        </div>
+        <button
+          onClick={() => currentUser ? void onLogout() : onRequestAuth()}
+          className="flex items-center gap-2 rounded-full bg-[#2a1d14]/38 px-3.5 py-2 text-xs text-[#fff5e6]/90 backdrop-blur-sm transition hover:bg-[#2a1d14]/55"
+        >
+          {currentUser ? (currentUser.name || currentUser.email || (zh ? "我的书房" : "My study")) : (zh ? "进入自己的书房" : "Enter your study")}
+          {!currentUser && <LogIn size={15} />}
+        </button>
+      </header>
+
+      {/* Desktop object hot zones: real objects remain the navigation. */}
+      <StudyHotspot className="left-[29%] top-[10%] h-[53%] w-[18%]" label={zh ? "打开日记本" : "Open journal"} onClick={() => setJournalOpen(true)} icon={<BookOpen size={17} />} desktop />
+      <StudyHotspot className="left-[51%] top-[10%] h-[37%] w-[10%]" label={zh ? "捕梦网" : "Dreamcatcher"} onClick={() => openEffect("dream", "dreams")} icon={<MoonStar size={17} />} desktop />
+      <StudyHotspot className="left-[62%] top-[7%] h-[30%] w-[15%]" label={zh ? "船舵" : "Ship wheel"} onClick={() => setOverlay("wheel")} icon={<Compass size={17} />} desktop />
+      <StudyHotspot className="left-[63%] top-[36%] h-[26%] w-[17%]" label={zh ? "老式播放器" : "Record player"} onClick={() => openEffect("player", "player")} icon={<Music2 size={17} />} desktop />
+      <StudyHotspot className="left-[8%] top-[55%] h-[27%] w-[17%]" label={zh ? `陪伴兽蛋 ${hatchProgress}/7` : `Companion egg ${hatchProgress}/7`} onClick={() => openEffect("egg", "egg")} icon={<Sparkles size={17} />} desktop />
+
+      {/* Mobile uses a compact object key because the camera crop changes materially. */}
+      <nav className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-[#271a12]/52 p-1.5 shadow-xl backdrop-blur-md md:hidden">
+        <MobileObjectButton label={zh ? "日记" : "Journal"} icon={<BookOpen size={18} />} onClick={() => setJournalOpen(true)} />
+        <MobileObjectButton label={zh ? "梦" : "Dreams"} icon={<MoonStar size={18} />} onClick={() => openEffect("dream", "dreams")} />
+        <MobileObjectButton label={zh ? "方向" : "Direction"} icon={<Compass size={18} />} onClick={() => setOverlay("wheel")} />
+        <MobileObjectButton label={zh ? "蛋" : "Egg"} icon={<Sparkles size={18} />} onClick={() => openEffect("egg", "egg")} />
+        <MobileObjectButton label={zh ? "音乐" : "Music"} icon={<Headphones size={18} />} onClick={() => openEffect("player", "player")} />
+      </nav>
+
+      {!currentUser && (
+        <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 w-[88%] max-w-lg -translate-x-1/2 text-center md:bottom-8">
+          <p className="rounded-full bg-[#24170f]/34 px-5 py-2 text-xs leading-5 text-[#fff7e8]/82 backdrop-blur-sm">
+            {zh ? "先写下第一段也可以。到保存时再建立自己的书房。" : "You can write first. Create your study only when you save."}
+          </p>
+        </div>
+      )}
+
+      {journalOpen && (
+        <V5JournalBook
+          language={language}
+          currentUser={currentUser}
+          entries={entries}
+          onRequestAuth={onRequestAuth}
+          onSaveEntry={onSaveEntry}
+          onDreamSaved={() => setEffect("dream")}
+          onClose={() => setJournalOpen(false)}
+        />
+      )}
+
+      {effectAsset && effect && !journalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/58 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-[#1f1711] shadow-2xl">
+            <button onClick={() => setEffect(null)} className="absolute right-3 top-3 z-20 rounded-full bg-black/40 p-2 text-white/80 hover:text-white" aria-label="Close animation"><X size={18} /></button>
+            <V5AssetVideo
+              asset={effectAsset}
+              label={effect}
+              autoPlay
+              muted
+              playsInline
+              className="aspect-video w-full object-contain"
+              onEnded={() => setEffect(null)}
+              onAssetUnavailable={() => setEffect(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {overlay === "egg" && !effect && (
+        <StudyPanel title={zh ? "陪伴兽的蛋" : "Companion egg"} onClose={() => setOverlay(null)}>
+          <div className="text-center">
+            <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-3xl shadow-[0_0_45px_rgba(251,191,36,.12)]">🥚</div>
+            <p className="font-serif text-xl text-[#fff3de]">{zh ? `${hatchProgress} / 7 个记录日` : `${hatchProgress} / 7 record days`}</p>
+            <div className="mx-auto mt-4 h-2 max-w-xs overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-200/70 transition-all" style={{ width: `${(hatchProgress / 7) * 100}%` }} /></div>
+            <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-[#d7c4aa]">
+              {hatchProgress >= 7
+                ? (zh ? "你已经留下了足够的不同日子。正式孵化时，InsightLoop 会根据记录给出推荐，但最后由你选择小凤凰或小雷龙。" : "You have enough record days. InsightLoop may recommend a beast, but you choose Phoenix or Thunder Dragon.")
+                : (zh ? "同一天可以写很多篇，但每天最多只有一篇计入孵化。它正在安静地记住你回来过的日子。" : "Write as much as you like. Only one entry per day advances hatching.")}
+            </p>
+          </div>
+        </StudyPanel>
+      )}
+
+      {overlay === "dreams" && !effect && (
+        <StudyPanel title={zh ? "捕梦网里的梦" : "Dreams in the catcher"} onClose={() => setOverlay(null)}>
+          {dreams.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[#d7c4aa]">{zh ? "这里还没有梦。下一次把梦写进日记，捕梦网会亮一下。" : "No dreams here yet. Save one in your journal and the dreamcatcher will light up."}</p>
+          ) : (
+            <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+              {dreams.map((entry) => (
+                <article key={entry.id} className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                  <div className="mb-2 text-xs tracking-wide text-amber-100/60">{entry.date}</div>
+                  <p className="whitespace-pre-wrap font-serif text-sm leading-7 text-[#f2e6d4]">{entry.dreams}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </StudyPanel>
+      )}
+
+      {overlay === "wheel" && !effect && (
+        <StudyPanel title={zh ? "船舵 · 我的方向" : "Ship wheel · My direction"} onClose={() => setOverlay(null)}>
+          <div className="mx-auto max-w-lg text-center">
+            <Compass size={52} strokeWidth={1.1} className="mx-auto mb-5 text-amber-100/75" />
+            <p className="font-serif text-lg leading-8 text-[#f4e7d3]">
+              {zh ? "船舵不会替你决定方向。只有当 InsightLoop 从日记里听见一个可能值得追踪的选择时，它才会轻轻亮起，并问你要不要把它放进这里。" : "The wheel never chooses for you. It lights only when InsightLoop hears a possible direction worth tracking and asks for your confirmation."}
+            </p>
+            <p className="mt-4 text-sm text-[#baa68d]">{zh ? "目前没有由你确认的方向。" : "No direction has been confirmed yet."}</p>
+          </div>
+        </StudyPanel>
+      )}
+
+      {overlay === "player" && !effect && (
+        <StudyPanel title={zh ? "老式播放器" : "Record player"} onClose={() => setOverlay(null)}>
+          <div className="mx-auto max-w-lg">
+            <div className="mb-5 grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="rounded-2xl border border-white/8 bg-white/5 p-3 text-center text-xs text-[#cbb99f]">
+                  <div className="mx-auto mb-2 h-12 w-12 rounded-full border border-amber-100/15 bg-[#17110d] shadow-inner" />
+                  {zh ? `书房唱片 ${String(n).padStart(2, "0")}` : `Study record ${String(n).padStart(2, "0")}`}
+                  <div className="mt-1 text-[10px] text-[#8f806d]">{zh ? "待版权确认后接入" : "Pending rights check"}</div>
+                </div>
+              ))}
+            </div>
+
+            <label className="block cursor-pointer rounded-2xl border border-dashed border-amber-100/20 bg-white/4 p-4 text-center text-sm text-[#e0cfb6] hover:bg-white/7">
+              {zh ? "选择这台设备上的 MP3" : "Choose an MP3 on this device"}
+              <input type="file" accept="audio/*,.mp3" className="hidden" onChange={(e) => chooseLocalMusic(e.target.files?.[0])} />
+            </label>
+
+            {musicUrl && (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-black/20 p-3">
+                <div className="min-w-0"><div className="truncate text-sm text-[#f3e4cd]">{musicName}</div><div className="text-[10px] text-[#9d8b74]">{zh ? "只在当前设备播放，不上传" : "Plays only on this device; not uploaded"}</div></div>
+                <button onClick={() => void toggleMusic()} className="rounded-full bg-amber-100/10 p-3 text-amber-50 hover:bg-amber-100/15">{musicPlaying ? <Pause size={18} /> : <Play size={18} />}</button>
+                <audio ref={audioRef} src={musicUrl} loop onEnded={() => setMusicPlaying(false)} />
+              </div>
+            )}
+          </div>
+        </StudyPanel>
+      )}
+    </main>
+  );
+};
+
+const StudyHotspot: React.FC<{ className: string; label: string; icon: React.ReactNode; onClick: () => void; desktop?: boolean }> = ({ className, label, icon, onClick, desktop }) => (
+  <button
+    onClick={onClick}
+    className={`group absolute z-20 ${desktop ? "hidden md:block" : ""} ${className}`}
+    aria-label={label}
+  >
+    <span className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-white/0 bg-[#20150e]/0 px-3 py-2 text-xs text-transparent transition-all duration-300 group-hover:border-white/12 group-hover:bg-[#20150e]/55 group-hover:text-[#fff4df] group-focus-visible:border-white/15 group-focus-visible:bg-[#20150e]/65 group-focus-visible:text-[#fff4df]">
+      {icon}{label}<ChevronRight size={13} />
+    </span>
+  </button>
+);
+
+const MobileObjectButton: React.FC<{ label: string; icon: React.ReactNode; onClick: () => void }> = ({ label, icon, onClick }) => (
+  <button onClick={onClick} className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-full px-2 py-1.5 text-[#f8ead5] hover:bg-white/8" aria-label={label}>
+    {icon}<span className="text-[9px]">{label}</span>
+  </button>
+);
+
+const StudyPanel: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <section className="relative w-full max-w-2xl rounded-[28px] border border-[#e8cfaa]/15 bg-[#2a2018]/96 p-6 shadow-2xl sm:p-8">
+      <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-2 text-[#cfb99e] hover:bg-white/5 hover:text-white" aria-label="Close"><X size={18} /></button>
+      <h2 className="mb-7 pr-10 font-serif text-2xl text-[#fff0d8]">{title}</h2>
+      {children}
+    </section>
+  </div>
+);
+
+export default V5StudyShell;
