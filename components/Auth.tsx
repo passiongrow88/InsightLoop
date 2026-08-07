@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { User, Language } from "../types";
 import { translations } from "../i18n";
 import { Sparkles, ArrowRight, UserCircle, Lock, Mail } from "lucide-react";
-import { supabase } from "../services/supabaseClient";
+import { getSupabaseClient } from "../services/supabaseClient";
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -28,6 +28,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
     setLoading(true);
 
     try {
+      const client = getSupabaseClient();
       const email = formData.email.trim().toLowerCase();
       const password = formData.password;
 
@@ -39,7 +40,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
         // ✅ Supabase signUp
         // NOTE: Supabase does not store "name" automatically unless you put it in user metadata
         // This will NOT affect your UI, just enriches profile data.
-        const { data, error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await client.auth.signUp({
           email,
           password,
           options: {
@@ -88,7 +89,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, language, setLanguage }) => {
       }
 
       // ✅ Supabase signInWithPassword
-      const { data, error: signInError } = await supabase.auth.signInWithPassword(
+      const { data, error: signInError } = await client.auth.signInWithPassword(
         { email, password }
       );
 

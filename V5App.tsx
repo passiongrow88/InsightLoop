@@ -3,7 +3,7 @@ import Auth from "./components/Auth";
 import V5StudyShell from "./components/v5/V5StudyShell";
 import { JournalEntry, Language, User } from "./types";
 import { createEntry, listEntries } from "./services/entriesStore";
-import { supabase } from "./services/supabaseClient";
+import { getSupabaseClient, isSupabaseConfigured, supabase } from "./services/supabaseClient";
 
 const V5App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -19,6 +19,8 @@ const V5App: React.FC = () => {
   }, [language]);
 
   useEffect(() => {
+    const client = supabase;
+    if (!client) return;
     let mounted = true;
 
     const mapUser = (user: any): User => ({
@@ -30,14 +32,14 @@ const V5App: React.FC = () => {
     });
 
     const init = async () => {
-      const { data, error } = await supabase.auth.getUser();
+      const { data, error } = await client.auth.getUser();
       if (!mounted) return;
       if (!error && data?.user) setCurrentUser(mapUser(data.user));
     };
 
     void init();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+    const { data: subscription } = client.auth.onAuthStateChange((_event: any, session: any) => {
       if (!mounted) return;
       if (session?.user) {
         setCurrentUser(mapUser(session.user));
@@ -55,7 +57,7 @@ const V5App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !supabase) return;
     let cancelled = false;
 
     const load = async () => {
@@ -74,6 +76,11 @@ const V5App: React.FC = () => {
   }, [currentUser]);
 
   const saveEntry = async (entry: JournalEntry) => {
+    if (!supabase) {
+      throw new Error(language === "zh"
+        ? "这个 Preview 尚未配置安全储存，因此不能永久保存。你写下的草稿仍会保留在当前浏览器。"
+        : "This Preview is not configured for secure storage, so it cannot permanently save yet. Your draft remains in this browser.");
+    }
     if (!currentUser) throw new Error(language === "zh" ? "请先登录后保存。" : "Please sign in before saving.");
 
     setEntries((prev) => [entry, ...prev]);
@@ -90,7 +97,8 @@ const V5App: React.FC = () => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    if (!supabase) return;
+    await getSupabaseClient().auth.signOut();
     setCurrentUser(null);
     setEntries([]);
   };
@@ -101,12 +109,13 @@ const V5App: React.FC = () => {
         language={language}
         currentUser={currentUser}
         entries={entries}
+        persistenceAvailable={isSupabaseConfigured}
         onRequestAuth={() => setAuthGateOpen(true)}
         onSaveEntry={saveEntry}
         onLogout={logout}
       />
 
-      {authGateOpen && !currentUser && (
+      {authGateOpen && !currentUser && isSupabaseConfigured && (
         <div className="fixed inset-0 z-[120] overflow-y-auto bg-[#1d140e]/72 p-3 backdrop-blur-md sm:p-6">
           <button
             onClick={() => setAuthGateOpen(false)}
@@ -119,6 +128,27 @@ const V5App: React.FC = () => {
             language={language}
             setLanguage={setLanguage}
           />
+        </div>
+      )}
+
+      {authGateOpen && !currentUser && !isSupabaseConfigured && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#1d140e]/72 p-4 backdrop-blur-md">
+          <section className="w-full max-w-md rounded-[28px] border border-[#e8cfaa]/15 bg-[#2a2018]/96 p-7 text-center shadow-2xl">
+            <p className="font-serif text-xl text-[#fff0d8]">
+              {language === "zh" ? "这间 Preview 还不能保存" : "This Preview cannot save yet"}
+            </p>
+            <p className="mt-4 text-sm leading-7 text-[#d7c4aa]">
+              {language === "zh"
+                ? "安全储存尚未配置。你仍可先探索书房和写草稿；草稿会留在当前浏览器，但注册和永久保存暂时不可用。"
+                : "Secure storage is not configured. You can still explore the study and write a browser draft, but registration and permanent saving are not available yet."}
+            </p>
+            <button
+              onClick={() => setAuthGateOpen(false)}
+              className="mt-6 rounded-full bg-[#66482a] px-5 py-2.5 text-sm text-[#fff8e8] shadow-md"
+            >
+              {language === "zh" ? "回到书房" : "Return to study"}
+            </button>
+          </section>
         </div>
       )}
     </>

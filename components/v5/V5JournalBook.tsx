@@ -19,6 +19,7 @@ interface Props {
   language: Language;
   currentUser: User | null;
   entries: JournalEntry[];
+  persistenceAvailable: boolean;
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
   onDreamSaved?: () => void;
@@ -33,6 +34,7 @@ const V5JournalBook: React.FC<Props> = ({
   language,
   currentUser,
   entries,
+  persistenceAvailable,
   onRequestAuth,
   onSaveEntry,
   onDreamSaved,
@@ -250,6 +252,12 @@ const V5JournalBook: React.FC<Props> = ({
       return;
     }
     if (!currentUser) {
+      if (!persistenceAvailable) {
+        setSaveError(language === "zh"
+          ? "这个 Preview 还没有配置安全储存。你可以继续浏览和保留当前浏览器中的草稿，但暂时不能注册或永久保存。"
+          : "This Preview does not yet have secure storage configured. You can keep this browser draft, but registration and permanent saving are not available yet.");
+        return;
+      }
       setWaitingForAuth(true);
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       onRequestAuth();

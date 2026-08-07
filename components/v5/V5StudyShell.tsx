@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronRight, Compass, Headphones, LogIn, MoonStar, Music2, Pause, Play, Sparkles, Volume2, X } from "lucide-react";
 import { JournalEntry, Language, User } from "../../types";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
+import { V5_BUILD_INFO } from "../../src/v5/buildInfo";
 import V5AssetVideo from "./V5AssetVideo";
 import V5JournalBook from "./V5JournalBook";
 
@@ -9,6 +10,7 @@ interface Props {
   language: Language;
   currentUser: User | null;
   entries: JournalEntry[];
+  persistenceAvailable: boolean;
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
   onLogout: () => Promise<void>;
@@ -21,6 +23,7 @@ const V5StudyShell: React.FC<Props> = ({
   language,
   currentUser,
   entries,
+  persistenceAvailable,
   onRequestAuth,
   onSaveEntry,
   onLogout,
@@ -155,11 +158,19 @@ const V5StudyShell: React.FC<Props> = ({
         </div>
       )}
 
+      <div
+        className="pointer-events-none absolute bottom-3 left-3 z-30 rounded-full bg-black/20 px-2.5 py-1 text-[9px] tracking-wide text-white/50 backdrop-blur-sm"
+        title={`${V5_BUILD_INFO.version} · ${V5_BUILD_INFO.commit} · ${V5_BUILD_INFO.builtAt} · ${V5_BUILD_INFO.environment}`}
+      >
+        {V5_BUILD_INFO.version} · {V5_BUILD_INFO.commit.slice(0, 7)} · {V5_BUILD_INFO.environment}
+      </div>
+
       {journalOpen && (
         <V5JournalBook
           language={language}
           currentUser={currentUser}
           entries={entries}
+          persistenceAvailable={persistenceAvailable}
           onRequestAuth={onRequestAuth}
           onSaveEntry={onSaveEntry}
           onDreamSaved={() => setEffect("dream")}
