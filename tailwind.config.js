@@ -5,6 +5,7 @@ export default {
 
     // 你的项目实际位置（根目录）
     "./App.tsx",
+    "./V5App.tsx",
     "./components/**/*.{js,ts,jsx,tsx}",
     "./services/**/*.{js,ts,jsx,tsx}",
 
