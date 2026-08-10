@@ -23,6 +23,9 @@ interface Props {
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
   onUpdateEntry: (entry: JournalEntry) => Promise<void>;
+  soundEnabled: boolean;
+  onSoundEnabledChange: (enabled: boolean) => void;
+  onPlayWritingSound: (durationMs: number) => void;
   onDreamSaved?: () => void;
   onClose: () => void;
 }
@@ -39,6 +42,9 @@ const V5JournalBook: React.FC<Props> = ({
   onRequestAuth,
   onSaveEntry,
   onUpdateEntry,
+  soundEnabled,
+  onSoundEnabledChange,
+  onPlayWritingSound,
   onDreamSaved,
   onClose,
 }) => {
@@ -55,7 +61,6 @@ const V5JournalBook: React.FC<Props> = ({
       return emptyDraft;
     }
   });
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [waitingForAuth, setWaitingForAuth] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [aiResponse, setAiResponse] = useState("");
@@ -80,6 +85,7 @@ const V5JournalBook: React.FC<Props> = ({
         review: "再看一遍今天留下的内容",
         edit: "修改",
         confirm: "确认，写进日记",
+        saving: "正在安全保存原文…",
         writing: "羽毛笔正在把你的原话写进今天……",
         thinking: "InsightLoop 正在读完这一页……",
         left: "今天的原话",
@@ -105,6 +111,7 @@ const V5JournalBook: React.FC<Props> = ({
         review: "Read what you are leaving here today",
         edit: "Edit",
         confirm: "Confirm and write it down",
+        saving: "Saving your original words…",
         writing: "The quill is writing your original words…",
         thinking: "InsightLoop is reading this page…",
         left: "Your words today",
@@ -141,36 +148,6 @@ const V5JournalBook: React.FC<Props> = ({
     ].filter(Boolean);
     return blocks.join("\n\n");
   }, [draft, language]);
-
-  const playWritingASMR = (durationMs = 1700) => {
-    if (!soundEnabled) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const duration = Math.max(0.4, durationMs / 1000);
-      const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * duration), ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i += 1) {
-        const scratchPulse = Math.sin(i / 18) * 0.35 + Math.sin(i / 61) * 0.18;
-        data[i] = (Math.random() * 2 - 1) * (0.12 + Math.abs(scratchPulse) * 0.12);
-      }
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      const filter = ctx.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = 1450;
-      filter.Q.value = 0.55;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.015, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.004, ctx.currentTime + duration);
-      source.connect(filter).connect(gain).connect(ctx.destination);
-      source.start();
-      source.onended = () => ctx.close().catch(() => undefined);
-    } catch {
-      // Audio is optional; never block the journal if a browser refuses AudioContext.
-    }
-  };
 
   const animateText = (
     text: string,
@@ -236,10 +213,13 @@ const V5JournalBook: React.FC<Props> = ({
       localStorage.removeItem(DRAFT_KEY);
       if (draft.dreams.trim()) onDreamSaved?.();
 
+      setVisibleOriginal("");
       setStep("writing-user");
-      playWritingASMR(1800);
+      const writingDuration = reduceMotion ? 0 : Math.min(5200, Math.max(2800, originalText.length * 24));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, reduceMotion ? 0 : 320));
+      if (soundEnabled) onPlayWritingSound(writingDuration || 700);
       await new Promise<void>((resolve) => {
-        animateText(originalText, setVisibleOriginal, 1600, resolve);
+        animateText(originalText, setVisibleOriginal, writingDuration, resolve);
       });
 
       setStep("thinking");
@@ -260,8 +240,9 @@ const V5JournalBook: React.FC<Props> = ({
       await onUpdateEntry(completed);
       setSavedEntry(completed);
       setAiResponse(response);
+      setVisibleResponse("");
       setStep("response");
-      playWritingASMR(Math.min(4200, Math.max(1800, response.length * 18)));
+      if (soundEnabled) onPlayWritingSound(Math.min(4200, Math.max(1800, response.length * 18)));
       animateText(response, setVisibleResponse, Math.min(5000, Math.max(1800, response.length * 20)));
     } catch (error: any) {
       const message = error?.message || (language === "zh" ? "保存失败，请重试。" : "Save failed. Please try again.");
@@ -414,9 +395,9 @@ const V5JournalBook: React.FC<Props> = ({
             <div className="font-serif text-sm tracking-[0.12em] text-[#5f4932]">INSIGHTLOOP · JOURNAL</div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setSoundEnabled((v) => !v)}
+                onClick={() => onSoundEnabledChange(!soundEnabled)}
                 className="rounded-full p-2 text-[#62492e] hover:bg-[#7a5b38]/10"
-                aria-label={soundEnabled ? "Mute writing sound" : "Enable writing sound"}
+                aria-label={soundEnabled ? (language === "zh" ? "关闭环境音和书写声" : "Mute ambience and writing") : (language === "zh" ? "开启环境音和书写声" : "Enable ambience and writing")}
               >
                 {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
               </button>
@@ -462,7 +443,7 @@ const V5JournalBook: React.FC<Props> = ({
                   <Pencil size={16} /> {copy.edit}
                 </button>
                 <button onClick={requestSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[#66482a] px-6 py-3 text-sm font-medium text-[#fff8e8] shadow-lg disabled:opacity-50">
-                  <Check size={17} /> {copy.confirm}
+                  <Check size={17} /> {isSaving ? copy.saving : copy.confirm}
                 </button>
               </div>
             </div>
@@ -470,7 +451,7 @@ const V5JournalBook: React.FC<Props> = ({
 
           {(step === "writing-user" || step === "thinking") && (
             <div className="relative z-10 mx-auto grid min-h-[640px] max-w-5xl grid-cols-1 gap-0 md:grid-cols-2">
-              <BookPage title={copy.left} text={visibleOriginal || originalText} quill={step === "writing-user"} />
+              <BookPage title={copy.left} text={step === "writing-user" ? visibleOriginal : originalText} writing={step === "writing-user"} quillVideo={step === "writing-user"} />
               <BookPage title={copy.right} text={step === "thinking" ? copy.thinking : ""} quiet quill={step === "thinking"} />
               <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-[#4a3420]/75 px-4 py-2 text-xs text-[#fff5e6] shadow-lg">
                 {step === "writing-user" ? copy.writing : copy.thinking}
@@ -483,7 +464,7 @@ const V5JournalBook: React.FC<Props> = ({
               <BookPage title={copy.left} text={originalText} />
               <BookPage
                 title={copy.right}
-                text={savedEntry?.responseStatus === "failed" ? copy.responseFailed : (visibleResponse || aiResponse)}
+                text={savedEntry?.responseStatus === "failed" ? copy.responseFailed : visibleResponse}
                 quill={savedEntry?.responseStatus === "ready" && visibleResponse.length < aiResponse.length}
               />
               <div className="col-span-full flex flex-col items-center gap-3 border-t border-[#876743]/20 px-5 py-5">
@@ -607,11 +588,25 @@ const PaperText: React.FC<{ text: string }> = ({ text }) => (
   </div>
 );
 
-const BookPage: React.FC<{ title: string; text: string; quill?: boolean; quiet?: boolean }> = ({ title, text, quill, quiet }) => (
-  <section className="relative min-h-[560px] border-[#8a6a45]/20 bg-[#fff9eb]/36 px-6 py-9 md:border-r md:px-9">
-    <div className="mb-5 text-center font-serif text-xs tracking-[0.18em] text-[#886c4a]">{title}</div>
-    <div className={`whitespace-pre-wrap font-serif text-[15px] leading-8 text-[#4b3827] sm:text-[17px] ${quiet ? "text-center text-[#77624a]" : ""}`}>
-      {text}
+const BookPage: React.FC<{ title: string; text: string; quill?: boolean; quiet?: boolean; writing?: boolean; quillVideo?: boolean }> = ({ title, text, quill, quiet, writing, quillVideo }) => (
+  <section className="relative min-h-[560px] overflow-hidden border-[#8a6a45]/20 bg-[#fff9eb]/36 px-6 py-9 md:border-r md:px-9">
+    {quillVideo && (
+      <div className="pointer-events-none absolute bottom-0 right-0 h-56 w-56 opacity-70 mix-blend-multiply sm:h-72 sm:w-72" aria-hidden="true">
+        <V5AssetVideo
+          asset={V5_ASSETS.quillThink}
+          label="羽毛笔在书页上写字"
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="h-full w-full object-cover"
+          style={{ WebkitMaskImage: "radial-gradient(circle at 62% 62%, black 40%, transparent 73%)", maskImage: "radial-gradient(circle at 62% 62%, black 40%, transparent 73%)" }}
+        />
+      </div>
+    )}
+    <div className="relative z-10 mb-5 text-center font-serif text-xs tracking-[0.18em] text-[#886c4a]">{title}</div>
+    <div className={`relative z-10 whitespace-pre-wrap font-serif text-[15px] leading-8 text-[#4b3827] sm:text-[17px] ${quiet ? "text-center text-[#77624a]" : ""}`}>
+      {text}{writing && <span aria-hidden="true" className="ml-0.5 inline-block h-5 w-[2px] translate-y-1 bg-[#6b4b2b]/55 animate-pulse motion-reduce:hidden" />}
     </div>
     {quill && (
       <div className="absolute bottom-9 right-8 animate-[pulse_1.6s_ease-in-out_infinite] rotate-[-16deg] text-[#6b4b2b] drop-shadow-md motion-reduce:animate-none">

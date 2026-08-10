@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, ChevronRight, Compass, CreditCard, Headphones, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { BookOpen, ChevronRight, CloudRain, Compass, CreditCard, Flame, Headphones, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { JournalEntry, Language, User } from "../../types";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
 import { V5_BUILD_INFO } from "../../src/v5/buildInfo";
+import { useAmbientSound } from "../../src/v5/useAmbientSound";
 import { getSupabaseClient } from "../../src/services/supabaseClient";
 import V5AssetVideo from "./V5AssetVideo";
 import V5JournalBook from "./V5JournalBook";
@@ -20,7 +21,7 @@ interface Props {
   onLogout: () => Promise<void>;
 }
 
-type Overlay = null | "egg" | "dreams" | "wheel" | "player" | "membership";
+type Overlay = null | "egg" | "dreams" | "wheel" | "player" | "membership" | "ambience";
 type Effect = null | "dream" | "player" | "egg" | "wheel";
 
 const V5StudyShell: React.FC<Props> = ({
@@ -49,6 +50,7 @@ const V5StudyShell: React.FC<Props> = ({
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingMessage, setBillingMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ambience = useAmbientSound();
 
   useEffect(() => () => {
     if (musicUrl) URL.revokeObjectURL(musicUrl);
@@ -185,6 +187,14 @@ const V5StudyShell: React.FC<Props> = ({
           INSIGHTLOOP
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOverlay("ambience")}
+            className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs backdrop-blur-sm transition hover:bg-[#2a1d14]/55 sm:px-3.5 ${ambience.mix.enabled ? "bg-amber-100/18 text-[#fff5e6]" : "bg-[#2a1d14]/38 text-[#fff5e6]/90"}`}
+            aria-label={zh ? "环境音设置" : "Ambient sound settings"}
+          >
+            {ambience.mix.enabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            <span className="hidden sm:inline">{zh ? (ambience.mix.enabled ? "环境音已开" : "开启环境音") : (ambience.mix.enabled ? "Ambience on" : "Start ambience")}</span>
+          </button>
           <button onClick={() => setOverlay("membership")} className="flex items-center gap-2 rounded-full bg-[#2a1d14]/38 px-3 py-2 text-xs text-[#fff5e6]/90 backdrop-blur-sm transition hover:bg-[#2a1d14]/55 sm:px-3.5">
             <CreditCard size={14} /> <span className="hidden sm:inline">{zh ? "Preview 方案" : "Preview plan"}</span>
           </button>
@@ -238,6 +248,9 @@ const V5StudyShell: React.FC<Props> = ({
           onRequestAuth={onRequestAuth}
           onSaveEntry={onSaveEntry}
           onUpdateEntry={onUpdateEntry}
+          soundEnabled={ambience.mix.enabled}
+          onSoundEnabledChange={ambience.setEnabled}
+          onPlayWritingSound={ambience.playWriting}
           onDreamSaved={() => setEffect("dream")}
           onClose={() => setJournalOpen(false)}
         />
@@ -417,6 +430,63 @@ const V5StudyShell: React.FC<Props> = ({
               {zh ? "仅允许 Vercel Preview + Stripe Test Mode；不会操作生产订阅或真实收费。正式价格仍待产品决定。" : "Vercel Preview + Stripe Test Mode only. No production subscription or real charge. Final pricing remains undecided."}
             </p>
             {billingMessage && <p role="status" className="mt-3 rounded-xl bg-red-950/25 p-3 text-sm text-red-100/85">{billingMessage}</p>}
+          </div>
+        </StudyPanel>
+      )}
+
+      {overlay === "ambience" && (
+        <StudyPanel title={zh ? "疗愈环境音" : "Healing ambience"} onClose={() => setOverlay(null)}>
+          <div className="mx-auto max-w-lg">
+            <p className="text-sm leading-6 text-[#d7c4aa]">
+              {zh
+                ? "细雨与火炉会在书房里持续播放；羽毛笔开始写字时，会叠加轻柔的纸面书写声。第一次必须由你亲手开启，浏览器才允许播放声音。"
+                : "Rain and fireplace ambience continue in the study. A gentle paper-writing layer joins when the quill starts. Browsers require you to switch sound on once."}
+            </p>
+            <button
+              onClick={() => ambience.setEnabled(!ambience.mix.enabled)}
+              className={`mt-6 flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium transition ${ambience.mix.enabled ? "border border-amber-100/18 bg-white/5 text-[#f5dfc0]" : "bg-[#87603a] text-[#fff8e8] shadow-lg"}`}
+              aria-pressed={ambience.mix.enabled}
+            >
+              {ambience.mix.enabled ? <VolumeX size={17} /> : <Volume2 size={17} />}
+              {ambience.mix.enabled ? (zh ? "关闭全部环境音" : "Turn all ambience off") : (zh ? "开启疗愈环境音" : "Start healing ambience")}
+            </button>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => ambience.setRain(!ambience.mix.rain)}
+                className={`rounded-2xl border p-4 text-left transition ${ambience.mix.rain ? "border-sky-100/20 bg-sky-100/8 text-sky-50" : "border-white/8 bg-white/3 text-[#8f806d]"}`}
+                aria-pressed={ambience.mix.rain}
+              >
+                <CloudRain size={22} />
+                <span className="mt-3 block text-sm">{zh ? "窗外细雨" : "Gentle rain"}</span>
+                <span className="mt-1 block text-[10px] opacity-60">{ambience.mix.rain ? (zh ? "已选择" : "Selected") : (zh ? "已关闭" : "Off")}</span>
+              </button>
+              <button
+                onClick={() => ambience.setFire(!ambience.mix.fire)}
+                className={`rounded-2xl border p-4 text-left transition ${ambience.mix.fire ? "border-amber-100/20 bg-amber-100/8 text-amber-50" : "border-white/8 bg-white/3 text-[#8f806d]"}`}
+                aria-pressed={ambience.mix.fire}
+              >
+                <Flame size={22} />
+                <span className="mt-3 block text-sm">{zh ? "火炉木柴" : "Fireplace"}</span>
+                <span className="mt-1 block text-[10px] opacity-60">{ambience.mix.fire ? (zh ? "已选择" : "Selected") : (zh ? "已关闭" : "Off")}</span>
+              </button>
+            </div>
+
+            <label className="mt-6 block text-xs text-[#cbb99f]">
+              <span className="mb-2 flex items-center justify-between"><span>{zh ? "环境音量" : "Ambient volume"}</span><span>{Math.round(ambience.mix.volume * 100)}%</span></span>
+              <input
+                type="range"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={ambience.mix.volume}
+                onChange={(event) => ambience.setVolume(Number(event.target.value))}
+                className="w-full accent-amber-200"
+              />
+            </label>
+            <p className="mt-4 text-center text-[10px] leading-5 text-[#8f806d]">
+              {zh ? "声音由浏览器即时合成，不上传录音，也不使用未授权音频。" : "Generated locally by the browser. No recordings are uploaded and no unlicensed audio is used."}
+            </p>
           </div>
         </StudyPanel>
       )}
