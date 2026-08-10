@@ -10,9 +10,9 @@ interface Props extends React.VideoHTMLAttributes<HTMLVideoElement> {
 /**
  * V5 video loader.
  *
- * It tries the future production/local static asset first. While V5 is still in
- * founder Preview it may fall back to the archived Drive copy. We never replace
- * a failed approved animation with a fake CSS animation; failure is surfaced.
+ * It tries the approved local static asset first. If animation playback fails,
+ * the approved local poster remains visible instead of covering the study with
+ * an error panel. We never replace an approved animation with fake motion.
  */
 const V5AssetVideo: React.FC<Props> = ({
   asset,
@@ -41,6 +41,16 @@ const V5AssetVideo: React.FC<Props> = ({
   };
 
   if (failed) {
+    if (asset.poster) {
+      return (
+        <img
+          src={asset.poster}
+          alt={label}
+          className={className}
+        />
+      );
+    }
+
     return (
       <div
         role="status"
