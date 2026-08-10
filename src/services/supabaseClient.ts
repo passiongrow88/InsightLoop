@@ -1,8 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+// Publishable Preview credentials are safe to ship to the browser. RLS is the
+// security boundary. Environment variables still take precedence for local work.
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || "https://psgjismukjxpsnodtwvl.supabase.co";
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "sb_publishable_V51jM3gFdCgsJA_Kw9W2zg_522aw52U";
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 

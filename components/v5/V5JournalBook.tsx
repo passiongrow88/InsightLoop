@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Feather, Pencil, Volume2, VolumeX, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Feather, Mic, MicOff, Pencil, RotateCcw, Volume2, VolumeX, X } from "lucide-react";
 import { JournalEntry, Language, User } from "../../types";
 import { generateJournalInsight } from "../../services/geminiService";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
@@ -22,6 +22,7 @@ interface Props {
   persistenceAvailable: boolean;
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
+  onUpdateEntry: (entry: JournalEntry) => Promise<void>;
   onDreamSaved?: () => void;
   onClose: () => void;
 }
@@ -37,10 +38,14 @@ const V5JournalBook: React.FC<Props> = ({
   persistenceAvailable,
   onRequestAuth,
   onSaveEntry,
+  onUpdateEntry,
   onDreamSaved,
   onClose,
 }) => {
-  const [intro, setIntro] = useState<Intro>("fly");
+  const [reduceMotion, setReduceMotion] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+  const [intro, setIntro] = useState<Intro>(() => reduceMotion ? "ready" : "fly");
   const [step, setStep] = useState<Step>("event");
   const [draft, setDraft] = useState<Draft>(() => {
     try {
@@ -57,6 +62,7 @@ const V5JournalBook: React.FC<Props> = ({
   const [visibleOriginal, setVisibleOriginal] = useState("");
   const [visibleResponse, setVisibleResponse] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [savedEntry, setSavedEntry] = useState<JournalEntry | null>(null);
   const finalizeLock = useRef(false);
 
   const copy = language === "zh"
@@ -80,6 +86,9 @@ const V5JournalBook: React.FC<Props> = ({
         right: "InsightLoop",
         saved: "这一页已经留下来了",
         close: "合上日记本",
+        retry: "重新生成回应",
+        responseFailed: "你的原话已经安全保存。InsightLoop 暂时没有写完右页，你可以稍后重试；原文不会受影响。",
+        skipIntro: "跳过动画",
         auth: "保存这一页前，需要先拥有自己的书房。注册后会回到这里，你刚才写的内容不会消失。",
       }
     : {
@@ -102,6 +111,9 @@ const V5JournalBook: React.FC<Props> = ({
         right: "InsightLoop",
         saved: "This page is now part of your journal",
         close: "Close journal",
+        retry: "Retry response",
+        responseFailed: "Your original words are safely saved. InsightLoop could not finish the right-hand page yet; you can retry without affecting the saved entry.",
+        skipIntro: "Skip animation",
         auth: "Before saving this page, create your own study. After sign-in you will return here and nothing you wrote will be lost.",
       };
 
@@ -109,6 +121,16 @@ const V5JournalBook: React.FC<Props> = ({
     if (step === "response") return;
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   }, [draft, step]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => {
+      setReduceMotion(media.matches);
+      if (media.matches) setIntro("ready");
+    };
+    media.addEventListener?.("change", handleChange);
+    return () => media.removeEventListener?.("change", handleChange);
+  }, []);
 
   const originalText = useMemo(() => {
     const blocks = [
@@ -156,6 +178,11 @@ const V5JournalBook: React.FC<Props> = ({
     durationMs: number,
     done?: () => void,
   ) => {
+    if (reduceMotion) {
+      setter(text);
+      done?.();
+      return () => undefined;
+    }
     setter("");
     if (!text) {
       done?.();
@@ -180,18 +207,11 @@ const V5JournalBook: React.FC<Props> = ({
     setWaitingForAuth(false);
     setSaveError("");
     setIsSaving(true);
-    setStep("writing-user");
-    playWritingASMR(1800);
-
-    await new Promise<void>((resolve) => {
-      animateText(originalText, setVisibleOriginal, 1600, resolve);
-    });
-
-    setStep("thinking");
+    let persistedEntry: JournalEntry | null = null;
 
     try {
       const now = new Date();
-      const date = now.toISOString().slice(0, 10);
+      const date = formatLocalDate(now);
       const entry: JournalEntry = {
         id: String(Date.now()),
         createdAt: Date.now(),
@@ -206,7 +226,23 @@ const V5JournalBook: React.FC<Props> = ({
         loveTarget: "",
         additionalNotes: "",
         aiResponse: "",
+        responseStatus: "pending",
       };
+
+      // Persistence is the source of truth: no success animation runs before this resolves.
+      await onSaveEntry(entry);
+      persistedEntry = entry;
+      setSavedEntry(entry);
+      localStorage.removeItem(DRAFT_KEY);
+      if (draft.dreams.trim()) onDreamSaved?.();
+
+      setStep("writing-user");
+      playWritingASMR(1800);
+      await new Promise<void>((resolve) => {
+        animateText(originalText, setVisibleOriginal, 1600, resolve);
+      });
+
+      setStep("thinking");
 
       const history = [...entries]
         .filter((item) => item.date !== date)
@@ -220,19 +256,63 @@ const V5JournalBook: React.FC<Props> = ({
         currentUser.name || "",
       );
 
-      const completed = { ...entry, aiResponse: response };
-      await onSaveEntry(completed);
+      const completed: JournalEntry = { ...entry, aiResponse: response, responseStatus: "ready" };
+      await onUpdateEntry(completed);
+      setSavedEntry(completed);
       setAiResponse(response);
       setStep("response");
-      if (draft.dreams.trim()) onDreamSaved?.();
-      localStorage.removeItem(DRAFT_KEY);
       playWritingASMR(Math.min(4200, Math.max(1800, response.length * 18)));
       animateText(response, setVisibleResponse, Math.min(5000, Math.max(1800, response.length * 20)));
     } catch (error: any) {
-      setSaveError(error?.message || (language === "zh" ? "保存失败，请重试。" : "Save failed. Please try again."));
-      setStep("review");
-      finalizeLock.current = false;
+      const message = error?.message || (language === "zh" ? "保存失败，请重试。" : "Save failed. Please try again.");
+      setSaveError(message);
+      if (persistedEntry) {
+        const failed: JournalEntry = { ...persistedEntry, responseStatus: "failed" };
+        try {
+          await onUpdateEntry(failed);
+          setSavedEntry(failed);
+        } catch (updateError) {
+          console.error("V5 response status update failed", updateError);
+        }
+        setStep("response");
+      } else {
+        setStep("review");
+      }
     } finally {
+      finalizeLock.current = false;
+      setIsSaving(false);
+    }
+  };
+
+  const retryResponse = async () => {
+    if (!savedEntry || isSaving || finalizeLock.current) return;
+    finalizeLock.current = true;
+    setIsSaving(true);
+    setSaveError("");
+    setStep("thinking");
+    try {
+      const pending = { ...savedEntry, responseStatus: "pending" as const };
+      await onUpdateEntry(pending);
+      const history = [...entries]
+        .filter((item) => item.id !== pending.id && item.date !== pending.date)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, 30);
+      const response = await generateJournalInsight(pending, history, language, currentUser?.name || "");
+      const completed = { ...pending, aiResponse: response, responseStatus: "ready" as const };
+      await onUpdateEntry(completed);
+      setSavedEntry(completed);
+      setAiResponse(response);
+      setVisibleResponse("");
+      setStep("response");
+      animateText(response, setVisibleResponse, Math.min(5000, Math.max(1800, response.length * 20)));
+    } catch (error: any) {
+      const failed = { ...savedEntry, responseStatus: "failed" as const };
+      try { await onUpdateEntry(failed); } catch { /* the original entry remains saved */ }
+      setSavedEntry(failed);
+      setSaveError(error?.message || copy.responseFailed);
+      setStep("response");
+    } finally {
+      finalizeLock.current = false;
       setIsSaving(false);
     }
   };
@@ -271,15 +351,15 @@ const V5JournalBook: React.FC<Props> = ({
 
   const formPage = () => {
     if (step === "event") {
-      return <QuestionPage title={copy.eventTitle} hint={copy.eventHint} value={draft.event} onChange={(v) => setField("event", v)} required />;
+      return <QuestionPage language={language} title={copy.eventTitle} hint={copy.eventHint} value={draft.event} onChange={(v) => setField("event", v)} required />;
     }
     if (step === "dream") {
-      return <QuestionPage title={copy.dreamTitle} hint={`${copy.dreamHint} · ${copy.optional}`} value={draft.dreams} onChange={(v) => setField("dreams", v)} />;
+      return <QuestionPage language={language} title={copy.dreamTitle} hint={`${copy.dreamHint} · ${copy.optional}`} value={draft.dreams} onChange={(v) => setField("dreams", v)} />;
     }
     if (step === "gratitude") {
-      return <QuestionPage title={copy.thanksTitle} hint={copy.optional} value={draft.gratitude} onChange={(v) => setField("gratitude", v)} />;
+      return <QuestionPage language={language} title={copy.thanksTitle} hint={copy.optional} value={draft.gratitude} onChange={(v) => setField("gratitude", v)} />;
     }
-    return <QuestionPage title={copy.sorryTitle} hint={copy.optional} value={draft.apologyTarget} onChange={(v) => setField("apologyTarget", v)} />;
+    return <QuestionPage language={language} title={copy.sorryTitle} hint={copy.optional} value={draft.apologyTarget} onChange={(v) => setField("apologyTarget", v)} />;
   };
 
   const next = () => {
@@ -302,6 +382,9 @@ const V5JournalBook: React.FC<Props> = ({
       <div className="fixed inset-0 z-[80] bg-[#1d1611] flex items-center justify-center">
         <button onClick={onClose} className="absolute right-4 top-4 z-20 rounded-full bg-black/35 p-2 text-white/80 hover:text-white" aria-label="Close journal">
           <X size={20} />
+        </button>
+        <button onClick={() => setIntro("ready")} className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/15 bg-black/35 px-4 py-2 text-xs text-white/85 hover:bg-black/50">
+          {copy.skipIntro}
         </button>
         <V5AssetVideo
           asset={asset}
@@ -398,9 +481,18 @@ const V5JournalBook: React.FC<Props> = ({
           {step === "response" && (
             <div className="relative z-10 mx-auto grid min-h-[650px] max-w-5xl grid-cols-1 md:grid-cols-2">
               <BookPage title={copy.left} text={originalText} />
-              <BookPage title={copy.right} text={visibleResponse || aiResponse} quill={visibleResponse.length < aiResponse.length} />
+              <BookPage
+                title={copy.right}
+                text={savedEntry?.responseStatus === "failed" ? copy.responseFailed : (visibleResponse || aiResponse)}
+                quill={savedEntry?.responseStatus === "ready" && visibleResponse.length < aiResponse.length}
+              />
               <div className="col-span-full flex flex-col items-center gap-3 border-t border-[#876743]/20 px-5 py-5">
                 <p className="text-xs tracking-wide text-[#755a3a]">{copy.saved}</p>
+                {savedEntry?.responseStatus === "failed" && (
+                  <button onClick={() => void retryResponse()} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full border border-[#65482c]/25 px-5 py-2.5 text-sm text-[#65482c] disabled:opacity-50">
+                    <RotateCcw size={16} /> {copy.retry}
+                  </button>
+                )}
                 <button onClick={onClose} className="rounded-full bg-[#65482c] px-6 py-2.5 text-sm text-[#fff7e8] shadow-md">
                   {copy.close}
                 </button>
@@ -414,26 +506,100 @@ const V5JournalBook: React.FC<Props> = ({
 };
 
 const QuestionPage: React.FC<{
+  language: Language;
   title: string;
   hint: string;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
-}> = ({ title, hint, value, onChange, required }) => (
+}> = ({ language, title, hint, value, onChange, required }) => {
+  const [listening, setListening] = useState(false);
+  const [speechError, setSpeechError] = useState("");
+  const recognitionRef = useRef<any>(null);
+  const baseValueRef = useRef("");
+
+  useEffect(() => () => recognitionRef.current?.abort?.(), []);
+
+  const toggleSpeech = () => {
+    if (listening) {
+      recognitionRef.current?.stop?.();
+      return;
+    }
+
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Recognition) {
+      setSpeechError(language === "zh"
+        ? "这个浏览器不支持语音转文字。你仍可继续打字。"
+        : "This browser does not support speech-to-text. You can continue typing.");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognitionRef.current = recognition;
+    baseValueRef.current = value.trimEnd();
+    recognition.lang = language === "zh" ? "zh-CN" : "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onstart = () => {
+      setSpeechError("");
+      setListening(true);
+    };
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i += 1) {
+        transcript += event.results[i][0]?.transcript || "";
+      }
+      const spacer = baseValueRef.current && transcript ? " " : "";
+      onChange(`${baseValueRef.current}${spacer}${transcript}`);
+    };
+    recognition.onerror = (event: any) => {
+      const denied = event?.error === "not-allowed" || event?.error === "service-not-allowed";
+      setSpeechError(denied
+        ? (language === "zh" ? "麦克风权限被拒绝；允许权限后可重试。" : "Microphone permission was denied. Allow access and try again.")
+        : (language === "zh" ? "语音没有识别成功，请重试或继续打字。" : "Speech was not recognized. Try again or continue typing."));
+    };
+    recognition.onend = () => setListening(false);
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+      setSpeechError(language === "zh" ? "语音服务暂时无法启动。" : "Speech recognition could not start.");
+    }
+  };
+
+  return (
   <div>
     <div className="mb-7 text-center">
       <h2 className="font-serif text-2xl leading-relaxed text-[#493521] sm:text-3xl">{title}</h2>
       <p className="mt-2 text-sm text-[#816748]">{hint}</p>
     </div>
-    <textarea
+    <div className="relative">
+      <textarea
       autoFocus
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={required ? "…" : ""}
-      className="min-h-[250px] w-full resize-none rounded-2xl border border-[#8c6a43]/20 bg-[#fffaf0]/56 px-5 py-5 font-serif text-lg leading-8 text-[#493725] outline-none shadow-inner placeholder:text-[#8b755f]/40 focus:border-[#8b6942]/45 focus:bg-[#fffaf0]/72"
-    />
+        className="min-h-[250px] w-full resize-none rounded-2xl border border-[#8c6a43]/20 bg-[#fffaf0]/56 px-5 py-5 pb-16 font-serif text-lg leading-8 text-[#493725] outline-none shadow-inner placeholder:text-[#8b755f]/40 focus:border-[#8b6942]/45 focus:bg-[#fffaf0]/72"
+      />
+      <button
+        type="button"
+        onClick={toggleSpeech}
+        className={`absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs transition ${listening ? "bg-red-900/80 text-white" : "bg-[#6b4c2c]/10 text-[#65482c] hover:bg-[#6b4c2c]/16"}`}
+        aria-pressed={listening}
+      >
+        {listening ? <MicOff size={16} /> : <Mic size={16} />}
+        {listening
+          ? (language === "zh" ? "停止并检查文字" : "Stop and review")
+          : (language === "zh" ? "语音转文字" : "Speech to text")}
+      </button>
+    </div>
+    {speechError && <p role="status" className="mt-2 text-xs text-red-800">{speechError}</p>}
+    <p className="mt-2 text-xs text-[#816748]">
+      {language === "zh" ? "识别结果只会写入上方文本框；保存前可以修改。" : "The transcript appears above and remains editable before saving."}
+    </p>
   </div>
-);
+  );
+};
 
 const PaperText: React.FC<{ text: string }> = ({ text }) => (
   <div className="whitespace-pre-wrap rounded-2xl border border-[#87643d]/20 bg-[#fffaf0]/58 p-6 font-serif text-base leading-8 text-[#4f3a26] shadow-inner sm:text-lg">
@@ -448,11 +614,18 @@ const BookPage: React.FC<{ title: string; text: string; quill?: boolean; quiet?:
       {text}
     </div>
     {quill && (
-      <div className="absolute bottom-9 right-8 animate-[pulse_1.6s_ease-in-out_infinite] rotate-[-16deg] text-[#6b4b2b] drop-shadow-md">
+      <div className="absolute bottom-9 right-8 animate-[pulse_1.6s_ease-in-out_infinite] rotate-[-16deg] text-[#6b4b2b] drop-shadow-md motion-reduce:animate-none">
         <Feather size={44} strokeWidth={1.35} />
       </div>
     )}
   </section>
 );
+
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 export default V5JournalBook;

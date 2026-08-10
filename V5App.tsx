@@ -2,13 +2,16 @@ import React, { useEffect, useState } from "react";
 import Auth from "./components/Auth";
 import V5StudyShell from "./components/v5/V5StudyShell";
 import { JournalEntry, Language, User } from "./types";
-import { createEntry, listEntries } from "./services/entriesStore";
+import { createEntry, listEntries, updateEntry } from "./services/entriesStore";
 import { getSupabaseClient, isSupabaseConfigured, supabase } from "./services/supabaseClient";
+import { getMyEntitlement } from "./services/entitlements";
 
 const V5App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [plan, setPlan] = useState<"free" | "pro">("free");
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("insightLoop_lang_global");
     return saved === "en" ? "en" : "zh";
@@ -24,6 +27,7 @@ const V5App: React.FC = () => {
     let mounted = true;
 
     const mapUser = (user: any): User => ({
+      id: user?.id || "",
       email: user?.email || "",
       name:
         user?.user_metadata?.name ||
@@ -47,6 +51,8 @@ const V5App: React.FC = () => {
       } else {
         setCurrentUser(null);
         setEntries([]);
+        setPlan("free");
+        setSubscriptionStatus(null);
       }
     });
 
@@ -62,8 +68,15 @@ const V5App: React.FC = () => {
 
     const load = async () => {
       try {
-        const rows = await listEntries<JournalEntry>("journal");
-        if (!cancelled) setEntries(rows || []);
+        const [rows, entitlement] = await Promise.all([
+          listEntries<JournalEntry>("journal"),
+          getMyEntitlement(),
+        ]);
+        if (!cancelled) {
+          setEntries(rows || []);
+          setPlan(entitlement.plan);
+          setSubscriptionStatus(entitlement.subscriptionStatus || null);
+        }
       } catch (error) {
         console.error("V5 journal load failed", error);
       }
@@ -83,17 +96,21 @@ const V5App: React.FC = () => {
     }
     if (!currentUser) throw new Error(language === "zh" ? "请先登录后保存。" : "Please sign in before saving.");
 
-    setEntries((prev) => [entry, ...prev]);
     try {
       const newId = await createEntry("journal", entry);
-      setEntries((prev) =>
-        prev.map((item) => (item.id === entry.id ? { ...item, id: newId || item.id } : item)),
-      );
+      setEntries((prev) => [{ ...entry, id: newId || entry.id }, ...prev]);
     } catch (error) {
-      setEntries((prev) => prev.filter((item) => item.id !== entry.id));
       console.error("V5 journal save failed", error);
       throw error;
     }
+  };
+
+  const updateSavedEntry = async (entry: JournalEntry) => {
+    if (!supabase || !currentUser) {
+      throw new Error(language === "zh" ? "请先登录后更新日记。" : "Please sign in before updating the journal.");
+    }
+    await updateEntry(entry.id, "journal", entry);
+    setEntries((prev) => prev.map((item) => (item.id === entry.id ? entry : item)));
   };
 
   const logout = async () => {
@@ -109,9 +126,12 @@ const V5App: React.FC = () => {
         language={language}
         currentUser={currentUser}
         entries={entries}
+        plan={plan}
+        subscriptionStatus={subscriptionStatus}
         persistenceAvailable={isSupabaseConfigured}
         onRequestAuth={() => setAuthGateOpen(true)}
         onSaveEntry={saveEntry}
+        onUpdateEntry={updateSavedEntry}
         onLogout={logout}
       />
 

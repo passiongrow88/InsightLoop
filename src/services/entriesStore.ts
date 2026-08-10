@@ -38,7 +38,8 @@ function mapJournalRowToEntry(r: any): JournalEntry {
     dreams: r.dreams || "",
     loveTarget: r.love_target || "",
     apologyTarget: r.apology_target || "",
-    insight: r.insight || "",
+    aiResponse: r.insight || "",
+    responseStatus: r.response_status || (r.insight ? "ready" : "pending"),
 
     // ✅【修复点】补 createdAt（number）
     createdAt: toCreatedAtNumber(r.created_at),
@@ -104,7 +105,8 @@ export async function createEntry<T extends { id?: string }>(
       dreams: (e as any).dreams || "",
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
-      insight: (e as any).insight || "",
+      insight: (e as any).aiResponse || "",
+      response_status: (e as any).responseStatus || ((e as any).aiResponse ? "ready" : "pending"),
 
       // ✅【修复点】写 created_at
       created_at: new Date((e as any).createdAt ?? Date.now()).toISOString(),
@@ -183,7 +185,8 @@ export async function updateEntry<T>(
       dreams: (e as any).dreams || "",
       love_target: (e as any).loveTarget || "",
       apology_target: (e as any).apologyTarget || "",
-      insight: (e as any).insight || "",
+      insight: (e as any).aiResponse || "",
+      response_status: (e as any).responseStatus || ((e as any).aiResponse ? "ready" : "pending"),
 
       // ✅【修复点】更新时也写 created_at（确保一致）
       created_at: new Date((e as any).createdAt ?? Date.now()).toISOString(),
@@ -191,7 +194,9 @@ export async function updateEntry<T>(
 
     const { error } = await supabase
       .from(TABLE_JOURNAL)
-      .upsert(row, { onConflict: "id" });
+      .update(row)
+      .eq("id", id)
+      .eq("user_id", uid);
 
     if (error) throw error;
     return;

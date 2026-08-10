@@ -15,8 +15,6 @@ const gitCommit = () => {
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Defines process.env for the Google GenAI SDK usage in frontend
-    'process.env': process.env,
     __V5_BUILD_COMMIT__: JSON.stringify(gitCommit()),
     __V5_BUILD_TIMESTAMP__: JSON.stringify(new Date().toISOString()),
   }

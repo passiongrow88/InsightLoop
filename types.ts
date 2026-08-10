@@ -12,6 +12,7 @@ export type ViewType =
   | "admin";        // âœ… æ–°å¢žï¼šç®¡ç†å‘˜åŽå°
 
 export interface User {
+  id?: string;
   email: string;
   name?: string;
   reminderTime?: string;
@@ -20,6 +21,7 @@ export interface User {
 export interface JournalEntry {
   createdAt: number;
   aiResponse?: string;
+  responseStatus?: "pending" | "ready" | "failed";
   additionalNotes?: string;
   id: string;
   date: string;
@@ -72,5 +74,4 @@ export interface Resource {
   is_active: boolean;
   created_at: string;
 }
-
 

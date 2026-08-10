@@ -1,8 +1,9 @@
-import React, { useMemo, useRef, useState } from "react";
-import { BookOpen, ChevronRight, Compass, Headphones, LogIn, MoonStar, Music2, Pause, Play, Sparkles, Volume2, X } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, ChevronRight, Compass, CreditCard, Headphones, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { JournalEntry, Language, User } from "../../types";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
 import { V5_BUILD_INFO } from "../../src/v5/buildInfo";
+import { getSupabaseClient } from "../../src/services/supabaseClient";
 import V5AssetVideo from "./V5AssetVideo";
 import V5JournalBook from "./V5JournalBook";
 
@@ -10,22 +11,28 @@ interface Props {
   language: Language;
   currentUser: User | null;
   entries: JournalEntry[];
+  plan: "free" | "pro";
+  subscriptionStatus: string | null;
   persistenceAvailable: boolean;
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
+  onUpdateEntry: (entry: JournalEntry) => Promise<void>;
   onLogout: () => Promise<void>;
 }
 
-type Overlay = null | "egg" | "dreams" | "wheel" | "player";
+type Overlay = null | "egg" | "dreams" | "wheel" | "player" | "membership";
 type Effect = null | "dream" | "player" | "egg" | "wheel";
 
 const V5StudyShell: React.FC<Props> = ({
   language,
   currentUser,
   entries,
+  plan,
+  subscriptionStatus,
   persistenceAvailable,
   onRequestAuth,
   onSaveEntry,
+  onUpdateEntry,
   onLogout,
 }) => {
   const [journalOpen, setJournalOpen] = useState(false);
@@ -34,7 +41,18 @@ const V5StudyShell: React.FC<Props> = ({
   const [musicUrl, setMusicUrl] = useState<string>("");
   const [musicName, setMusicName] = useState<string>("");
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [musicCurrent, setMusicCurrent] = useState(0);
+  const [musicDuration, setMusicDuration] = useState(0);
+  const [musicVolume, setMusicVolume] = useState(0.75);
+  const [musicMuted, setMusicMuted] = useState(false);
+  const [musicLoop, setMusicLoop] = useState(true);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingMessage, setBillingMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => () => {
+    if (musicUrl) URL.revokeObjectURL(musicUrl);
+  }, [musicUrl]);
 
   const zh = language === "zh";
   const uniqueRecordDays = useMemo(
@@ -85,6 +103,47 @@ const V5StudyShell: React.FC<Props> = ({
     }
   };
 
+  const seekMusic = (delta: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + delta));
+  };
+
+  const changeVolume = (value: number) => {
+    setMusicVolume(value);
+    setMusicMuted(false);
+    if (audioRef.current) {
+      audioRef.current.volume = value;
+      audioRef.current.muted = false;
+    }
+  };
+
+  const openPreviewBilling = async () => {
+    if (!currentUser) {
+      onRequestAuth();
+      return;
+    }
+    setBillingLoading(true);
+    setBillingMessage("");
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error(zh ? "请重新登录后再试。" : "Please sign in again and retry.");
+      const response = await fetch(plan === "pro" ? "/api/stripe/create-portal-session" : "/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ plan: "monthly" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.url) throw new Error(payload.error || (zh ? "Preview 结账尚未配置。" : "Preview checkout is not configured."));
+      window.location.assign(payload.url);
+    } catch (error: any) {
+      setBillingMessage(error?.message || (zh ? "Preview 结账暂时不可用。" : "Preview checkout is unavailable."));
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
   return (
     <main className="relative h-[100dvh] w-full overflow-hidden bg-[#241a13] text-[#fff8eb]">
       <picture className="absolute inset-0">
@@ -125,13 +184,18 @@ const V5StudyShell: React.FC<Props> = ({
         <div className="rounded-full bg-[#2a1d14]/35 px-4 py-2 font-serif text-sm tracking-[0.18em] text-[#fff5e6]/90 backdrop-blur-sm">
           INSIGHTLOOP
         </div>
-        <button
-          onClick={() => currentUser ? void onLogout() : onRequestAuth()}
-          className="flex items-center gap-2 rounded-full bg-[#2a1d14]/38 px-3.5 py-2 text-xs text-[#fff5e6]/90 backdrop-blur-sm transition hover:bg-[#2a1d14]/55"
-        >
-          {currentUser ? (currentUser.name || currentUser.email || (zh ? "我的书房" : "My study")) : (zh ? "进入自己的书房" : "Enter your study")}
-          {!currentUser && <LogIn size={15} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setOverlay("membership")} className="flex items-center gap-2 rounded-full bg-[#2a1d14]/38 px-3 py-2 text-xs text-[#fff5e6]/90 backdrop-blur-sm transition hover:bg-[#2a1d14]/55 sm:px-3.5">
+            <CreditCard size={14} /> <span className="hidden sm:inline">{zh ? "Preview 方案" : "Preview plan"}</span>
+          </button>
+          <button
+            onClick={() => currentUser ? void onLogout() : onRequestAuth()}
+            className="flex items-center gap-2 rounded-full bg-[#2a1d14]/38 px-3.5 py-2 text-xs text-[#fff5e6]/90 backdrop-blur-sm transition hover:bg-[#2a1d14]/55"
+          >
+            {currentUser ? (currentUser.name || currentUser.email || (zh ? "我的书房" : "My study")) : (zh ? "进入自己的书房" : "Enter your study")}
+            {!currentUser && <LogIn size={15} />}
+          </button>
+        </div>
       </header>
 
       {/* Desktop object hot zones: real objects remain the navigation. */}
@@ -173,26 +237,43 @@ const V5StudyShell: React.FC<Props> = ({
           persistenceAvailable={persistenceAvailable}
           onRequestAuth={onRequestAuth}
           onSaveEntry={onSaveEntry}
+          onUpdateEntry={onUpdateEntry}
           onDreamSaved={() => setEffect("dream")}
           onClose={() => setJournalOpen(false)}
         />
       )}
 
-      {effectAsset && effect && !journalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/58 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-[#1f1711] shadow-2xl">
-            <button onClick={() => setEffect(null)} className="absolute right-3 top-3 z-20 rounded-full bg-black/40 p-2 text-white/80 hover:text-white" aria-label="Close animation"><X size={18} /></button>
-            <V5AssetVideo
-              asset={effectAsset}
-              label={effect}
-              autoPlay
-              muted
-              playsInline
-              className="aspect-video w-full object-contain"
-              onEnded={() => setEffect(null)}
-              onAssetUnavailable={() => setEffect(null)}
-            />
-          </div>
+      {effectAsset && effect && !journalOpen && effect !== "egg" && (
+        <div className="fixed inset-0 z-[70] overflow-hidden bg-[#241a13]">
+          <V5AssetVideo
+            asset={effectAsset}
+            label={effect}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+            onEnded={() => setEffect(null)}
+            onAssetUnavailable={() => setEffect(null)}
+          />
+          <button onClick={() => setEffect(null)} className="absolute right-4 top-4 z-20 rounded-full bg-black/40 p-2 text-white/80 hover:text-white" aria-label="Close animation"><X size={18} /></button>
+        </div>
+      )}
+
+      {effectAsset && effect === "egg" && !journalOpen && (
+        <div className="pointer-events-none fixed inset-0 z-[70] overflow-hidden">
+          <div className="absolute bottom-[12%] left-[4%] h-[22vw] w-[22vw] max-h-[310px] max-w-[310px] rounded-full bg-amber-200/15 blur-3xl" />
+          <V5AssetVideo
+            asset={effectAsset}
+            label="companion egg"
+            autoPlay
+            muted
+            playsInline
+            className="absolute bottom-[7%] left-[1%] w-[34vw] max-w-[440px] object-cover mix-blend-multiply sm:bottom-[4%]"
+            style={{ WebkitMaskImage: "radial-gradient(circle, black 44%, transparent 72%)", maskImage: "radial-gradient(circle, black 44%, transparent 72%)" }}
+            onEnded={() => setEffect(null)}
+            onAssetUnavailable={() => setEffect(null)}
+          />
+          <button onClick={() => setEffect(null)} className="pointer-events-auto absolute right-4 top-4 z-20 rounded-full bg-black/40 p-2 text-white/80 hover:text-white" aria-label="Close animation"><X size={18} /></button>
         </div>
       )}
 
@@ -259,12 +340,83 @@ const V5StudyShell: React.FC<Props> = ({
             </label>
 
             {musicUrl && (
-              <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-black/20 p-3">
+              <div className="mt-4 rounded-2xl bg-black/20 p-4">
                 <div className="min-w-0"><div className="truncate text-sm text-[#f3e4cd]">{musicName}</div><div className="text-[10px] text-[#9d8b74]">{zh ? "只在当前设备播放，不上传" : "Plays only on this device; not uploaded"}</div></div>
-                <button onClick={() => void toggleMusic()} className="rounded-full bg-amber-100/10 p-3 text-amber-50 hover:bg-amber-100/15">{musicPlaying ? <Pause size={18} /> : <Play size={18} />}</button>
-                <audio ref={audioRef} src={musicUrl} loop onEnded={() => setMusicPlaying(false)} />
+                <input
+                  aria-label={zh ? "播放进度" : "Playback position"}
+                  type="range"
+                  min={0}
+                  max={Math.max(musicDuration, 0)}
+                  step={0.1}
+                  value={Math.min(musicCurrent, musicDuration || 0)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setMusicCurrent(next);
+                    if (audioRef.current) audioRef.current.currentTime = next;
+                  }}
+                  className="mt-4 w-full accent-amber-200"
+                />
+                <div className="flex items-center justify-between text-[10px] tabular-nums text-[#9d8b74]"><span>{formatTime(musicCurrent)}</span><span>{formatTime(musicDuration)}</span></div>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <button onClick={() => seekMusic(-10)} className="rounded-full p-2.5 text-amber-50 hover:bg-white/8" aria-label={zh ? "后退 10 秒" : "Back 10 seconds"}><SkipBack size={17} /></button>
+                  <button onClick={() => void toggleMusic()} className="rounded-full bg-amber-100/10 p-3 text-amber-50 hover:bg-amber-100/15" aria-label={musicPlaying ? (zh ? "暂停" : "Pause") : (zh ? "播放" : "Play")}>{musicPlaying ? <Pause size={19} /> : <Play size={19} />}</button>
+                  <button onClick={() => seekMusic(10)} className="rounded-full p-2.5 text-amber-50 hover:bg-white/8" aria-label={zh ? "前进 10 秒" : "Forward 10 seconds"}><SkipForward size={17} /></button>
+                  <button onClick={() => {
+                    const next = !musicMuted;
+                    setMusicMuted(next);
+                    if (audioRef.current) audioRef.current.muted = next;
+                  }} className="rounded-full p-2.5 text-amber-50 hover:bg-white/8" aria-label={musicMuted ? (zh ? "取消静音" : "Unmute") : (zh ? "静音" : "Mute")}>{musicMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
+                  <input aria-label={zh ? "音量" : "Volume"} type="range" min={0} max={1} step={0.05} value={musicVolume} onChange={(e) => changeVolume(Number(e.target.value))} className="w-20 accent-amber-200" />
+                  <button onClick={() => setMusicLoop((value) => !value)} className={`rounded-full p-2.5 hover:bg-white/8 ${musicLoop ? "text-amber-100" : "text-[#806f5d]"}`} aria-pressed={musicLoop} aria-label={zh ? "循环播放" : "Loop playback"}><Repeat2 size={17} /></button>
+                </div>
+                <audio
+                  ref={audioRef}
+                  src={musicUrl}
+                  loop={musicLoop}
+                  onLoadedMetadata={(event) => {
+                    const audio = event.currentTarget;
+                    audio.volume = musicVolume;
+                    setMusicDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+                  }}
+                  onTimeUpdate={(event) => setMusicCurrent(event.currentTarget.currentTime)}
+                  onPlay={() => setMusicPlaying(true)}
+                  onPause={() => setMusicPlaying(false)}
+                  onEnded={() => setMusicPlaying(false)}
+                />
               </div>
             )}
+          </div>
+        </StudyPanel>
+      )}
+
+      {overlay === "membership" && (
+        <StudyPanel title={zh ? "Preview 方案" : "Preview plan"} onClose={() => setOverlay(null)}>
+          <div className="mx-auto max-w-lg">
+            <div className="rounded-2xl border border-amber-100/15 bg-white/5 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs tracking-[0.18em] text-amber-100/55">{zh ? "当前方案" : "CURRENT PLAN"}</p>
+                  <p className="mt-2 font-serif text-2xl text-[#fff1dc]">{plan === "pro" ? "Pro" : "Free"}</p>
+                </div>
+                <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-xs text-emerald-100/80">{subscriptionStatus || "Preview"}</span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-[#d7c4aa]">
+                {zh ? "免费方案保留完整、有人味的日记回应。未来 Pro 只增加更长记忆、更多深度回顾、语音与报告，不会把基本理解锁在付费墙后。" : "Free keeps the complete humane journal response. Future Pro adds longer memory, more deep reviews, voice, and reports without paywalling basic understanding."}
+              </p>
+            </div>
+            <button onClick={() => void openPreviewBilling()} disabled={billingLoading || !currentUser} className="mt-4 w-full rounded-full bg-[#755333] px-5 py-3 text-sm text-[#fff8e8] shadow-lg disabled:cursor-not-allowed disabled:opacity-45">
+              {billingLoading
+                ? (zh ? "正在检查 Stripe Test Mode…" : "Checking Stripe Test Mode…")
+                : currentUser
+                  ? plan === "pro"
+                    ? (zh ? "管理 Preview 测试订阅" : "Manage Preview test subscription")
+                    : (zh ? "测试 Pro 订阅流程" : "Test Pro subscription flow")
+                  : (zh ? "登录后测试订阅" : "Sign in to test subscription")}
+            </button>
+            <p className="mt-3 text-center text-xs leading-5 text-[#9f8c74]">
+              {zh ? "仅允许 Vercel Preview + Stripe Test Mode；不会操作生产订阅或真实收费。正式价格仍待产品决定。" : "Vercel Preview + Stripe Test Mode only. No production subscription or real charge. Final pricing remains undecided."}
+            </p>
+            {billingMessage && <p role="status" className="mt-3 rounded-xl bg-red-950/25 p-3 text-sm text-red-100/85">{billingMessage}</p>}
           </div>
         </StudyPanel>
       )}
@@ -292,12 +444,19 @@ const MobileObjectButton: React.FC<{ label: string; icon: React.ReactNode; onCli
 
 const StudyPanel: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-    <section className="relative w-full max-w-2xl rounded-[28px] border border-[#e8cfaa]/15 bg-[#2a2018]/96 p-6 shadow-2xl sm:p-8">
+    <section role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-2xl rounded-[28px] border border-[#e8cfaa]/15 bg-[#2a2018]/96 p-6 shadow-2xl sm:p-8">
       <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-2 text-[#cfb99e] hover:bg-white/5 hover:text-white" aria-label="Close"><X size={18} /></button>
       <h2 className="mb-7 pr-10 font-serif text-2xl text-[#fff0d8]">{title}</h2>
       {children}
     </section>
   </div>
 );
+
+const formatTime = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${rest}`;
+};
 
 export default V5StudyShell;
