@@ -111,7 +111,7 @@ class AmbientAudioEngine {
     }
   }
 
-  private stopWriting() {
+  stopWriting() {
     if (this.writingTimer !== null) window.clearTimeout(this.writingTimer);
     this.writingTimer = null;
     if (this.writingAudio) {
@@ -159,6 +159,7 @@ export const useAmbientSound = () => {
     setFire: useCallback((fire: boolean) => updateMix((current) => ({ ...current, fire })), [updateMix]),
     setVolume: useCallback((volume: number) => updateMix((current) => ({ ...current, volume })), [updateMix]),
     playWriting: useCallback((durationMs: number) => engineRef.current?.playWriting(durationMs), []),
+    stopWriting: useCallback(() => engineRef.current?.stopWriting(), []),
     playBookOnTable: useCallback(() => engineRef.current?.playBookOnTable(), []),
   };
 };

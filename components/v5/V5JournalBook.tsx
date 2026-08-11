@@ -26,6 +26,7 @@ interface Props {
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
   onPlayWritingSound: (durationMs: number) => void;
+  onStopWritingSound: () => void;
   onPlayBookSound: () => void;
   onDreamSaved?: () => void;
   onClose: () => void;
@@ -46,6 +47,7 @@ const V5JournalBook: React.FC<Props> = ({
   soundEnabled,
   onSoundEnabledChange,
   onPlayWritingSound,
+  onStopWritingSound,
   onPlayBookSound,
   onDreamSaved,
   onClose,
@@ -71,6 +73,9 @@ const V5JournalBook: React.FC<Props> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [savedEntry, setSavedEntry] = useState<JournalEntry | null>(null);
   const finalizeLock = useRef(false);
+  const originalWritten = useRef(false);
+  const animationCancel = useRef<() => void>(() => undefined);
+  const animationFinish = useRef<(() => void) | null>(null);
 
   const copy = language === "zh"
     ? {
@@ -97,6 +102,7 @@ const V5JournalBook: React.FC<Props> = ({
         retry: "重新生成回应",
         responseFailed: "你的原话已经安全保存。InsightLoop 暂时没有写完右页，你可以稍后重试；原文不会受影响。",
         skipIntro: "跳过动画",
+        skipWriting: "跳过书写动画",
         auth: "保存这一页前，需要先拥有自己的书房。注册后会回到这里，你刚才写的内容不会消失。",
       }
     : {
@@ -123,6 +129,7 @@ const V5JournalBook: React.FC<Props> = ({
         retry: "Retry response",
         responseFailed: "Your original words are safely saved. InsightLoop could not finish the right-hand page yet; you can retry without affecting the saved entry.",
         skipIntro: "Skip animation",
+        skipWriting: "Skip writing animation",
         auth: "Before saving this page, create your own study. After sign-in you will return here and nothing you wrote will be lost.",
       };
 
@@ -180,6 +187,36 @@ const V5JournalBook: React.FC<Props> = ({
     return () => window.clearInterval(timer);
   };
 
+  const animateOriginalWords = async () => {
+    setVisibleOriginal("");
+    setStep("writing-user");
+    const writingDuration = reduceMotion ? 0 : Math.min(5200, Math.max(2800, originalText.length * 24));
+    await new Promise<void>((resolve) => window.setTimeout(resolve, reduceMotion ? 0 : 320));
+    if (soundEnabled) onPlayWritingSound(writingDuration || 700);
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        animationFinish.current = null;
+        animationCancel.current = () => undefined;
+        resolve();
+      };
+      animationFinish.current = finish;
+      const cancel = animateText(originalText, setVisibleOriginal, writingDuration, finish);
+      if (settled) cancel();
+      else animationCancel.current = cancel;
+    });
+    originalWritten.current = true;
+  };
+
+  const skipOriginalWriting = () => {
+    animationCancel.current();
+    setVisibleOriginal(originalText);
+    onStopWritingSound();
+    animationFinish.current?.();
+  };
+
   const finalize = async () => {
     if (finalizeLock.current || !currentUser) return;
     finalizeLock.current = true;
@@ -208,21 +245,13 @@ const V5JournalBook: React.FC<Props> = ({
         responseStatus: "pending",
       };
 
-      // Persistence is the source of truth: no success animation runs before this resolves.
+      // Persistence remains the source of truth for saved state. The left-page
+      // writing ritual has already run before this permanent-save boundary.
       await onSaveEntry(entry);
       persistedEntry = entry;
       setSavedEntry(entry);
       localStorage.removeItem(DRAFT_KEY);
       if (draft.dreams.trim()) onDreamSaved?.();
-
-      setVisibleOriginal("");
-      setStep("writing-user");
-      const writingDuration = reduceMotion ? 0 : Math.min(5200, Math.max(2800, originalText.length * 24));
-      await new Promise<void>((resolve) => window.setTimeout(resolve, reduceMotion ? 0 : 320));
-      if (soundEnabled) onPlayWritingSound(writingDuration || 700);
-      await new Promise<void>((resolve) => {
-        animateText(originalText, setVisibleOriginal, writingDuration, resolve);
-      });
 
       setStep("thinking");
 
@@ -309,12 +338,26 @@ const V5JournalBook: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, waitingForAuth]);
 
-  const requestSave = () => {
+  const requestSave = async () => {
     if (!draft.event.trim() && !draft.dreams.trim()) {
       setStep("event");
       return;
     }
+    if (finalizeLock.current) return;
+
+    finalizeLock.current = true;
+    setWaitingForAuth(false);
+    setSaveError("");
+    setIsSaving(true);
+    try {
+      if (!originalWritten.current) await animateOriginalWords();
+    } finally {
+      finalizeLock.current = false;
+      setIsSaving(false);
+    }
+
     if (!currentUser) {
+      setStep("review");
       if (!persistenceAvailable) {
         setSaveError(language === "zh"
           ? "这个 Preview 还没有配置安全储存。你可以继续浏览和保留当前浏览器中的草稿，但暂时不能注册或永久保存。"
@@ -329,8 +372,11 @@ const V5JournalBook: React.FC<Props> = ({
     void finalize();
   };
 
-  const setField = (key: keyof Draft, value: string) =>
+  const setField = (key: keyof Draft, value: string) => {
+    originalWritten.current = false;
+    setWaitingForAuth(false);
     setDraft((prev) => ({ ...prev, [key]: value }));
+  };
 
   const formPage = () => {
     if (step === "event") {
@@ -357,6 +403,12 @@ const V5JournalBook: React.FC<Props> = ({
     else if (step === "gratitude") setStep("dream");
     else if (step === "apology") setStep("gratitude");
     else if (step === "review") setStep("apology");
+  };
+
+  const editDraft = () => {
+    originalWritten.current = false;
+    setWaitingForAuth(false);
+    setStep("event");
   };
 
   if (intro !== "ready") {
@@ -448,10 +500,10 @@ const V5JournalBook: React.FC<Props> = ({
               {waitingForAuth && <p className="mt-4 rounded-xl bg-[#fff6df]/60 p-3 text-sm leading-6 text-[#6f5031]">{copy.auth}</p>}
               {saveError && <p className="mt-4 rounded-xl bg-red-50/70 p-3 text-sm text-red-800">{saveError}</p>}
               <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
-                <button onClick={() => setStep("event")} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-[#65492f] hover:bg-[#73583a]/8">
+                <button onClick={editDraft} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-[#65492f] hover:bg-[#73583a]/8">
                   <Pencil size={16} /> {copy.edit}
                 </button>
-                <button onClick={requestSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[#66482a] px-6 py-3 text-sm font-medium text-[#fff8e8] shadow-lg disabled:opacity-50">
+                <button onClick={() => void requestSave()} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[#66482a] px-6 py-3 text-sm font-medium text-[#fff8e8] shadow-lg disabled:opacity-50">
                   <Check size={17} /> {isSaving ? copy.saving : copy.confirm}
                 </button>
               </div>
@@ -462,8 +514,13 @@ const V5JournalBook: React.FC<Props> = ({
             <div className="relative z-10 mx-auto grid min-h-[640px] max-w-5xl grid-cols-1 gap-0 md:grid-cols-2">
               <BookPage title={copy.left} text={step === "writing-user" ? visibleOriginal : originalText} writing={step === "writing-user"} quillVideo={step === "writing-user"} />
               <BookPage title={copy.right} text={step === "thinking" ? copy.thinking : ""} quiet quill={step === "thinking"} />
-              <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-[#4a3420]/75 px-4 py-2 text-xs text-[#fff5e6] shadow-lg">
-                {step === "writing-user" ? copy.writing : copy.thinking}
+              <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-[#4a3420]/75 px-4 py-2 text-xs text-[#fff5e6] shadow-lg">
+                <span>{step === "writing-user" ? copy.writing : copy.thinking}</span>
+                {step === "writing-user" && (
+                  <button onClick={skipOriginalWriting} className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-white/90 hover:bg-white/10">
+                    {copy.skipWriting}
+                  </button>
+                )}
               </div>
             </div>
           )}

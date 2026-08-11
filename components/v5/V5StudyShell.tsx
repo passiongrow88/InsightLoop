@@ -251,6 +251,7 @@ const V5StudyShell: React.FC<Props> = ({
           soundEnabled={ambience.mix.enabled}
           onSoundEnabledChange={ambience.setEnabled}
           onPlayWritingSound={ambience.playWriting}
+          onStopWritingSound={ambience.stopWriting}
           onPlayBookSound={ambience.playBookOnTable}
           onDreamSaved={() => setEffect("dream")}
           onClose={() => setJournalOpen(false)}
