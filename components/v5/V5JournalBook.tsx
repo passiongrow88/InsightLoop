@@ -26,6 +26,7 @@ interface Props {
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
   onPlayWritingSound: (durationMs: number) => void;
+  onPlayBookSound: () => void;
   onDreamSaved?: () => void;
   onClose: () => void;
 }
@@ -45,6 +46,7 @@ const V5JournalBook: React.FC<Props> = ({
   soundEnabled,
   onSoundEnabledChange,
   onPlayWritingSound,
+  onPlayBookSound,
   onDreamSaved,
   onClose,
 }) => {
@@ -374,7 +376,14 @@ const V5JournalBook: React.FC<Props> = ({
           playsInline
           muted
           className="h-full w-full object-contain"
-          onEnded={() => setIntro(intro === "fly" ? "open" : "ready")}
+          onEnded={() => {
+            if (intro === "fly") {
+              onPlayBookSound();
+              setIntro("open");
+            } else {
+              setIntro("ready");
+            }
+          }}
           onAssetUnavailable={() => setIntro(intro === "fly" ? "open" : "ready")}
         />
       </div>

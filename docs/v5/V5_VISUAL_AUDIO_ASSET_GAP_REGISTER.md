@@ -305,15 +305,17 @@ InsightLoop V5 是一个发生在温暖 2.5D 私人书房里的长期觉察系�
 
 ### J. 声音资产
 
-当前仓库、Library 与指定 Drive 文件夹均未发现独立 MP3/WAV/OGG/M4A 音乐或音效文件。现有角色 MP4 内的 AAC 音轨不符合原制作规范，不能当作正式声音资产复用。
+2026-08-11 创始人提供了独立 WAV：细雨、火炉、三条羽毛笔书写，以及书本落桌。母版均为 44.1 kHz / 16-bit / stereo；Preview 派生时已转为 48 kHz，完成静音裁切、循环交叉淡化、响度统一、峰值限制，并输出 OGG Opus + AAC 回退。角色 MP4 内的原始 AAC 音轨仍不符合制作规范，不能复用。
+
+当前授权记录仅覆盖创始人提供给 InsightLoop V5 Preview 使用；进入 production／公开商业发布前，仍需归档母版来源与商业分发权证明。
 
 | ID | 缺失声音 | 来源 | 格式 | 首发 | 优先级 | 依赖 | 验收标准 | 文件名／目录 |
 |---|---|---|---|---|---|---|---|---|
-| AU-01 | 温暖书房环境声 | 新制/合法授权 | AUDIO-MUSIC | 是 | P0 | 授权登记 | -24 至 -20 LUFS 左右的克制背景；无突发峰值；可关闭 | `public/assets/v5/audio/ambience/study-warm.{ogg,m4a}` |
-| AU-02 | 羽毛笔沙沙书写 ASMR | 新制/合法授权 | AUDIO-SFX | 是 | P0 | QL-04 | 可循环/拼接；无刺耳高频；与写字速度同步 | `.../sfx/quill-writing.{ogg,m4a}` |
+| AU-01 | 温暖书房环境声 | 创始人提供；Preview 已接入 | AUDIO-MUSIC | 是 | P0 | production 权利证明待归档 | 细雨与火炉独立开关；约 -20 LUFS 派生母版；循环交叉淡化；可关闭 | `public/v5/audio/{rain,fireplace}.{ogg,m4a}` |
+| AU-02 | 羽毛笔沙沙书写 ASMR | 创始人提供；Preview 已接入 | AUDIO-SFX | 是 | P0 | QL-04；production 权利证明待归档 | 三条轮换；约 -21 LUFS 派生母版；跟随书写时长停止 | `public/v5/audio/quill-writing-{01..03}.{ogg,m4a}` |
 | AU-03 | 翻页声 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | JR-05 | 短、柔和；快速翻页不叠加爆音 | `.../sfx/page-turn-{01..03}.{ogg,m4a}` |
 | AU-04 | 书从书架飞出 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | JR-02 | 不像魔法爆炸；音量低于主要交互 | `.../sfx/book-fly.{ogg,m4a}` |
-| AU-05 | 书落桌 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | JR-03 | 有重量但不惊吓；峰值受限 | `.../sfx/book-land.{ogg,m4a}` |
+| AU-05 | 书落桌 | 创始人提供；Preview 已接入 | AUDIO-SFX | 是 | P0 | JR-03；production 权利证明待归档 | 0.3 秒；降低 9 dB 并限峰；只在声音已开启时播放 | `public/v5/audio/book-on-table.{ogg,m4a}` |
 | AU-06 | 墨水落笔声 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | QL-03/11 | 与笔尖接触同步；不重复刺耳 | `.../sfx/ink-nib-contact.{ogg,m4a}` |
 | AU-07 | 捕梦网轻响 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | DR-02 | 温和、非恐怖风铃；只在保存成功后播放 | `.../sfx/dreamcatcher-chime.{ogg,m4a}` |
 | AU-08 | 金蛋发光声 | 新制/合法授权 | AUDIO-SFX | 是 | P0 | GE-02 | 极轻；不可像抽卡奖励 | `.../sfx/golden-egg-glow.{ogg,m4a}` |

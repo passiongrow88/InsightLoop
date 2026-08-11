@@ -251,6 +251,7 @@ const V5StudyShell: React.FC<Props> = ({
           soundEnabled={ambience.mix.enabled}
           onSoundEnabledChange={ambience.setEnabled}
           onPlayWritingSound={ambience.playWriting}
+          onPlayBookSound={ambience.playBookOnTable}
           onDreamSaved={() => setEffect("dream")}
           onClose={() => setJournalOpen(false)}
         />
@@ -485,7 +486,7 @@ const V5StudyShell: React.FC<Props> = ({
               />
             </label>
             <p className="mt-4 text-center text-[10px] leading-5 text-[#8f806d]">
-              {zh ? "声音由浏览器即时合成，不上传录音，也不使用未授权音频。" : "Generated locally by the browser. No recordings are uploaded and no unlicensed audio is used."}
+              {zh ? "使用你提供的细雨、火炉与羽毛笔音效；声音默认关闭，只在你开启后播放。" : "Uses your supplied rain, fireplace, and quill sounds. Audio stays off until you enable it."}
             </p>
           </div>
         </StudyPanel>
