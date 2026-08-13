@@ -36,7 +36,13 @@ const V5StudyShell: React.FC<Props> = ({
   onUpdateEntry,
   onLogout,
 }) => {
-  const [journalOpen, setJournalOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(() => {
+    try {
+      return localStorage.getItem("insightLoop_v5_auth_handoff") === "pending";
+    } catch {
+      return false;
+    }
+  });
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [effect, setEffect] = useState<Effect>(null);
   const [musicUrl, setMusicUrl] = useState<string>("");

@@ -10,6 +10,7 @@ const V5App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [passwordRecoveryOpen, setPasswordRecoveryOpen] = useState(false);
   const [plan, setPlan] = useState<"free" | "pro">("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language>(() => {
@@ -43,11 +44,15 @@ const V5App: React.FC = () => {
 
     void init();
 
-    const { data: subscription } = client.auth.onAuthStateChange((_event: any, session: any) => {
+    const { data: subscription } = client.auth.onAuthStateChange((event: any, session: any) => {
       if (!mounted) return;
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryOpen(true);
+        setAuthGateOpen(false);
+      }
       if (session?.user) {
         setCurrentUser(mapUser(session.user));
-        setAuthGateOpen(false);
+        if (event !== "PASSWORD_RECOVERY") setAuthGateOpen(false);
       } else {
         setCurrentUser(null);
         setEntries([]);
@@ -169,6 +174,18 @@ const V5App: React.FC = () => {
               {language === "zh" ? "回到书房" : "Return to study"}
             </button>
           </section>
+        </div>
+      )}
+
+      {passwordRecoveryOpen && isSupabaseConfigured && (
+        <div className="fixed inset-0 z-[140] overflow-y-auto bg-[#1d140e]/80 p-3 backdrop-blur-md sm:p-6">
+          <Auth
+            recoveryMode
+            onPasswordUpdated={() => setPasswordRecoveryOpen(false)}
+            onLogin={() => undefined}
+            language={language}
+            setLanguage={setLanguage}
+          />
         </div>
       )}
     </>

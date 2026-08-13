@@ -33,8 +33,17 @@ interface Props {
 }
 
 const DRAFT_KEY = "insightLoop_v5_pending_draft";
+const AUTH_HANDOFF_KEY = "insightLoop_v5_auth_handoff";
 
 const emptyDraft: Draft = { event: "", dreams: "", gratitude: "", apologyTarget: "" };
+
+const hasAuthHandoff = () => {
+  try {
+    return localStorage.getItem(AUTH_HANDOFF_KEY) === "pending";
+  } catch {
+    return false;
+  }
+};
 
 const V5JournalBook: React.FC<Props> = ({
   language,
@@ -55,8 +64,8 @@ const V5JournalBook: React.FC<Props> = ({
   const [reduceMotion, setReduceMotion] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
-  const [intro, setIntro] = useState<Intro>(() => reduceMotion ? "ready" : "fly");
-  const [step, setStep] = useState<Step>("event");
+  const [intro, setIntro] = useState<Intro>(() => reduceMotion || hasAuthHandoff() ? "ready" : "fly");
+  const [step, setStep] = useState<Step>(() => hasAuthHandoff() ? "review" : "event");
   const [draft, setDraft] = useState<Draft>(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -65,7 +74,7 @@ const V5JournalBook: React.FC<Props> = ({
       return emptyDraft;
     }
   });
-  const [waitingForAuth, setWaitingForAuth] = useState(false);
+  const [waitingForAuth, setWaitingForAuth] = useState(() => hasAuthHandoff());
   const [saveError, setSaveError] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [visibleOriginal, setVisibleOriginal] = useState("");
@@ -268,6 +277,7 @@ const V5JournalBook: React.FC<Props> = ({
       persistedEntry = entry;
       setSavedEntry(entry);
       localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(AUTH_HANDOFF_KEY);
       if (draft.dreams.trim()) onDreamSaved?.();
 
       setStep("thinking");
@@ -414,6 +424,7 @@ const V5JournalBook: React.FC<Props> = ({
       }
       setWaitingForAuth(true);
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      localStorage.setItem(AUTH_HANDOFF_KEY, "pending");
       onRequestAuth();
       return;
     }
@@ -456,6 +467,7 @@ const V5JournalBook: React.FC<Props> = ({
   const editDraft = () => {
     originalWritten.current = false;
     setWaitingForAuth(false);
+    localStorage.removeItem(AUTH_HANDOFF_KEY);
     setStep("event");
   };
 
