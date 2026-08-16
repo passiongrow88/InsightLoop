@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Auth from "./components/Auth";
 import V5StudyShell from "./components/v5/V5StudyShell";
-import { JournalEntry, Language, User } from "./types";
+import { JournalEntry, Language, ManifestationItem, User } from "./types";
 import { createEntry, listEntries, updateEntry } from "./services/entriesStore";
 import { getSupabaseClient, isSupabaseConfigured, supabase } from "./services/supabaseClient";
 import { getMyEntitlement } from "./services/entitlements";
@@ -9,6 +9,7 @@ import { getMyEntitlement } from "./services/entitlements";
 const V5App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [manifestations, setManifestations] = useState<ManifestationItem[]>([]);
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [passwordRecoveryOpen, setPasswordRecoveryOpen] = useState(false);
   const [plan, setPlan] = useState<"free" | "pro">("free");
@@ -56,6 +57,7 @@ const V5App: React.FC = () => {
       } else {
         setCurrentUser(null);
         setEntries([]);
+        setManifestations([]);
         setPlan("free");
         setSubscriptionStatus(null);
       }
@@ -73,12 +75,14 @@ const V5App: React.FC = () => {
 
     const load = async () => {
       try {
-        const [rows, entitlement] = await Promise.all([
+        const [rows, savedManifestations, entitlement] = await Promise.all([
           listEntries<JournalEntry>("journal"),
+          listEntries<ManifestationItem>("manifestation"),
           getMyEntitlement(),
         ]);
         if (!cancelled) {
           setEntries(rows || []);
+          setManifestations(savedManifestations || []);
           setPlan(entitlement.plan);
           setSubscriptionStatus(entitlement.subscriptionStatus || null);
         }
@@ -118,11 +122,20 @@ const V5App: React.FC = () => {
     setEntries((prev) => prev.map((item) => (item.id === entry.id ? entry : item)));
   };
 
+  const saveManifestation = async (item: ManifestationItem) => {
+    if (!supabase || !currentUser) {
+      throw new Error(language === "zh" ? "请先登录后保存方向。" : "Please sign in before saving a direction.");
+    }
+    const newId = await createEntry("manifestation", item);
+    setManifestations((prev) => [{ ...item, id: newId || item.id }, ...prev]);
+  };
+
   const logout = async () => {
     if (!supabase) return;
     await getSupabaseClient().auth.signOut();
     setCurrentUser(null);
     setEntries([]);
+    setManifestations([]);
   };
 
   return (
@@ -131,12 +144,14 @@ const V5App: React.FC = () => {
         language={language}
         currentUser={currentUser}
         entries={entries}
+        manifestations={manifestations}
         plan={plan}
         subscriptionStatus={subscriptionStatus}
         persistenceAvailable={isSupabaseConfigured}
         onRequestAuth={() => setAuthGateOpen(true)}
         onSaveEntry={saveEntry}
         onUpdateEntry={updateSavedEntry}
+        onSaveManifestation={saveManifestation}
         onLogout={logout}
       />
 

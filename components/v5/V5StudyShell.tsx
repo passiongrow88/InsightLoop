@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronRight, CloudRain, Compass, CreditCard, Flame, Headphones, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
-import { JournalEntry, Language, User } from "../../types";
+import { JournalEntry, Language, ManifestationItem, User } from "../../types";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
 import { V5_BUILD_INFO } from "../../src/v5/buildInfo";
 import { useAmbientSound } from "../../src/v5/useAmbientSound";
+import { resolveDreamText } from "../../src/v5/journalSignals";
 import { getSupabaseClient } from "../../src/services/supabaseClient";
 import V5AssetVideo from "./V5AssetVideo";
 import V5JournalBook from "./V5JournalBook";
@@ -12,12 +13,14 @@ interface Props {
   language: Language;
   currentUser: User | null;
   entries: JournalEntry[];
+  manifestations: ManifestationItem[];
   plan: "free" | "pro";
   subscriptionStatus: string | null;
   persistenceAvailable: boolean;
   onRequestAuth: () => void;
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
   onUpdateEntry: (entry: JournalEntry) => Promise<void>;
+  onSaveManifestation: (item: ManifestationItem) => Promise<void>;
   onLogout: () => Promise<void>;
 }
 
@@ -28,12 +31,14 @@ const V5StudyShell: React.FC<Props> = ({
   language,
   currentUser,
   entries,
+  manifestations,
   plan,
   subscriptionStatus,
   persistenceAvailable,
   onRequestAuth,
   onSaveEntry,
   onUpdateEntry,
+  onSaveManifestation,
   onLogout,
 }) => {
   const [journalOpen, setJournalOpen] = useState(() => {
@@ -55,6 +60,11 @@ const V5StudyShell: React.FC<Props> = ({
   const [musicLoop, setMusicLoop] = useState(true);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingMessage, setBillingMessage] = useState("");
+  const [wheelGoal, setWheelGoal] = useState("");
+  const [wheelDate, setWheelDate] = useState("");
+  const [wheelReason, setWheelReason] = useState("");
+  const [wheelSaving, setWheelSaving] = useState(false);
+  const [wheelMessage, setWheelMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambience = useAmbientSound();
 
@@ -67,9 +77,11 @@ const V5StudyShell: React.FC<Props> = ({
     () => new Set(entries.map((entry) => entry.date).filter(Boolean)).size,
     [entries],
   );
-  const hatchProgress = Math.min(7, uniqueRecordDays);
+  const founderQa = subscriptionStatus === "founder_qa";
+  const hatchProgress = founderQa ? 7 : Math.min(7, uniqueRecordDays);
   const dreams = useMemo(
     () => entries
+      .map((entry) => ({ ...entry, dreams: resolveDreamText(entry.event, entry.dreams) }))
       .filter((entry) => (entry.dreams || "").trim())
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
     [entries],
@@ -149,6 +161,41 @@ const V5StudyShell: React.FC<Props> = ({
       setBillingMessage(error?.message || (zh ? "Preview 结账暂时不可用。" : "Preview checkout is unavailable."));
     } finally {
       setBillingLoading(false);
+    }
+  };
+
+
+  const saveDirection = async () => {
+    if (!currentUser) {
+      onRequestAuth();
+      return;
+    }
+    const goal = wheelGoal.trim();
+    if (!goal) {
+      setWheelMessage(zh ? "先写下你想确认的方向。" : "Write the direction you want to confirm.");
+      return;
+    }
+    setWheelSaving(true);
+    setWheelMessage("");
+    try {
+      const item: ManifestationItem = {
+        id: String(Date.now()),
+        createdAt: Date.now(),
+        status: "active",
+        goal,
+        expectedDate: wheelDate,
+        reason: wheelReason.trim(),
+      };
+      await onSaveManifestation(item);
+      setWheelGoal("");
+      setWheelDate("");
+      setWheelReason("");
+      setWheelMessage(zh ? "方向已经确认并保存到你的船舵。" : "Direction confirmed and saved to your wheel.");
+      setEffect("wheel");
+    } catch (error: any) {
+      setWheelMessage(error?.message || (zh ? "方向暂时无法保存，请重试。" : "The direction could not be saved. Please retry."));
+    } finally {
+      setWheelSaving(false);
     }
   };
 
@@ -303,6 +350,7 @@ const V5StudyShell: React.FC<Props> = ({
           <div className="text-center">
             <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-3xl shadow-[0_0_45px_rgba(251,191,36,.12)]">🥚</div>
             <p className="font-serif text-xl text-[#fff3de]">{zh ? `${hatchProgress} / 7 个记录日` : `${hatchProgress} / 7 record days`}</p>
+            {founderQa && <p className="mt-2 text-xs tracking-[0.14em] text-amber-100/70">{zh ? "FOUNDER QA · 已跳过等待期" : "FOUNDER QA · WAIT SKIPPED"}</p>}
             <div className="mx-auto mt-4 h-2 max-w-xs overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-200/70 transition-all" style={{ width: `${(hatchProgress / 7) * 100}%` }} /></div>
             <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-[#d7c4aa]">
               {hatchProgress >= 7
@@ -332,12 +380,68 @@ const V5StudyShell: React.FC<Props> = ({
 
       {overlay === "wheel" && !effect && (
         <StudyPanel title={zh ? "船舵 · 我的方向" : "Ship wheel · My direction"} onClose={() => setOverlay(null)}>
-          <div className="mx-auto max-w-lg text-center">
+          <div className="mx-auto max-w-xl">
             <Compass size={52} strokeWidth={1.1} className="mx-auto mb-5 text-amber-100/75" />
-            <p className="font-serif text-lg leading-8 text-[#f4e7d3]">
-              {zh ? "船舵不会替你决定方向。只有当 InsightLoop 从日记里听见一个可能值得追踪的选择时，它才会轻轻亮起，并问你要不要把它放进这里。" : "The wheel never chooses for you. It lights only when InsightLoop hears a possible direction worth tracking and asks for your confirmation."}
-            </p>
-            <p className="mt-4 text-sm text-[#baa68d]">{zh ? "目前没有由你确认的方向。" : "No direction has been confirmed yet."}</p>
+            {founderQa ? (
+              <>
+                <p className="text-center font-serif text-lg leading-8 text-[#f4e7d3]">
+                  {zh ? "Founder QA 可以直接确认一个方向，用来完整测试船舵保存与回读流程。" : "Founder QA can confirm a direction directly to test the wheel save-and-readback flow."}
+                </p>
+                <div className="mt-5 space-y-3 rounded-2xl border border-white/10 bg-black/15 p-4">
+                  <input
+                    value={wheelGoal}
+                    onChange={(event) => setWheelGoal(event.target.value)}
+                    placeholder={zh ? "我想前往的方向…" : "The direction I want to take…"}
+                    className="w-full rounded-xl border border-white/10 bg-white/7 px-4 py-3 text-sm text-[#fff3de] outline-none placeholder:text-[#9f8c73] focus:border-amber-100/35"
+                    maxLength={1000}
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      type="date"
+                      value={wheelDate}
+                      onChange={(event) => setWheelDate(event.target.value)}
+                      className="rounded-xl border border-white/10 bg-white/7 px-4 py-3 text-sm text-[#e9d8c0] outline-none focus:border-amber-100/35"
+                    />
+                    <input
+                      value={wheelReason}
+                      onChange={(event) => setWheelReason(event.target.value)}
+                      placeholder={zh ? "为什么这对我重要（选填）" : "Why this matters (optional)"}
+                      className="rounded-xl border border-white/10 bg-white/7 px-4 py-3 text-sm text-[#fff3de] outline-none placeholder:text-[#9f8c73] focus:border-amber-100/35"
+                      maxLength={1000}
+                    />
+                  </div>
+                  <button
+                    onClick={() => void saveDirection()}
+                    disabled={wheelSaving || !wheelGoal.trim()}
+                    className="w-full rounded-full bg-[#8a623d] px-5 py-3 text-sm text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {wheelSaving ? (zh ? "正在保存…" : "Saving…") : (zh ? "确认这个方向" : "Confirm this direction")}
+                  </button>
+                  {wheelMessage && <p role="status" className="text-center text-xs leading-5 text-amber-100/75">{wheelMessage}</p>}
+                </div>
+                <div className="mt-5 max-h-48 space-y-2 overflow-y-auto">
+                  {manifestations.length === 0 ? (
+                    <p className="text-center text-sm text-[#baa68d]">{zh ? "还没有确认的方向。" : "No confirmed direction yet."}</p>
+                  ) : manifestations.map((item) => (
+                    <article key={item.id} className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                      <p className="font-serif text-[#f4e7d3]">{item.goal}</p>
+                      {(item.expectedDate || item.reason) && (
+                        <p className="mt-2 text-xs leading-5 text-[#baa68d]">
+                          {[item.expectedDate, item.reason].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <p className="font-serif text-lg leading-8 text-[#f4e7d3]">
+                  {zh ? "船舵不会替你决定方向。只有当 InsightLoop 从日记里听见一个可能值得追踪的选择时，它才会轻轻亮起，并问你要不要把它放进这里。" : "The wheel never chooses for you. It lights only when InsightLoop hears a possible direction worth tracking and asks for your confirmation."}
+                </p>
+                <p className="mt-4 text-sm text-[#baa68d]">{zh ? "目前没有由你确认的方向。" : "No direction has been confirmed yet."}</p>
+              </div>
+            )}
           </div>
         </StudyPanel>
       )}

@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Feather, Loader2, Mic, MicOff, Pencil
 import { JournalEntry, Language, User } from "../../types";
 import { generateJournalInsight, generateJournalSpeech } from "../../services/mimoService";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
+import { resolveDreamText } from "../../src/v5/journalSignals";
 import V5AssetVideo from "./V5AssetVideo";
 
 type Step = "event" | "dream" | "gratitude" | "apology" | "review" | "writing-user" | "thinking" | "response";
@@ -254,6 +255,7 @@ const V5JournalBook: React.FC<Props> = ({
     try {
       const now = new Date();
       const date = formatLocalDate(now);
+      const resolvedDreams = resolveDreamText(draft.event, draft.dreams);
       const entry: JournalEntry = {
         id: String(Date.now()),
         createdAt: Date.now(),
@@ -262,7 +264,7 @@ const V5JournalBook: React.FC<Props> = ({
         reflection: "",
         gratitude: draft.gratitude.trim(),
         selfTalk: "",
-        dreams: draft.dreams.trim(),
+        dreams: resolvedDreams,
         apologyTarget: draft.apologyTarget.trim(),
         angelNumbers: "",
         loveTarget: "",
@@ -278,7 +280,7 @@ const V5JournalBook: React.FC<Props> = ({
       setSavedEntry(entry);
       localStorage.removeItem(DRAFT_KEY);
       localStorage.removeItem(AUTH_HANDOFF_KEY);
-      if (draft.dreams.trim()) onDreamSaved?.();
+      if (resolvedDreams) onDreamSaved?.();
 
       setStep("thinking");
 

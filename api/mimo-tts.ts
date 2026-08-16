@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@supabase/supabase-js";
+const { createClient } = require("@supabase/supabase-js");
 
 const PREVIEW_SUPABASE_URL = "https://psgjismukjxpsnodtwvl.supabase.co";
 const PREVIEW_SUPABASE_KEY = "sb_publishable_V51jM3gFdCgsJA_Kw9W2zg_522aw52U";
@@ -31,7 +31,7 @@ async function requirePreviewUser(req: VercelRequest) {
   if (error || !data.user) throw Object.assign(new Error("A valid Preview session is required."), { status: 401 });
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
     if (process.env.VERCEL_ENV !== "preview" && process.env.ALLOW_LOCAL_PREVIEW_AI !== "true") {
