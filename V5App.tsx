@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import Auth from "./components/Auth";
 import V5StudyShell from "./components/v5/V5StudyShell";
-import { JournalEntry, Language, ManifestationItem, User } from "./types";
-import { createEntry, listEntries, updateEntry } from "./services/entriesStore";
+import { CompanionProfile, JournalEntry, Language, ManifestationItem, User } from "./types";
+import { createEntry, getCompanion, listEntries, saveCompanion, updateEntry } from "./services/entriesStore";
 import { getSupabaseClient, isSupabaseConfigured, supabase } from "./services/supabaseClient";
 import { getMyEntitlement } from "./services/entitlements";
 
@@ -10,6 +10,7 @@ const V5App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [manifestations, setManifestations] = useState<ManifestationItem[]>([]);
+  const [companion, setCompanion] = useState<CompanionProfile | null>(null);
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [passwordRecoveryOpen, setPasswordRecoveryOpen] = useState(false);
   const [plan, setPlan] = useState<"free" | "pro">("free");
@@ -58,6 +59,7 @@ const V5App: React.FC = () => {
         setCurrentUser(null);
         setEntries([]);
         setManifestations([]);
+        setCompanion(null);
         setPlan("free");
         setSubscriptionStatus(null);
       }
@@ -75,14 +77,16 @@ const V5App: React.FC = () => {
 
     const load = async () => {
       try {
-        const [rows, savedManifestations, entitlement] = await Promise.all([
+        const [rows, savedManifestations, savedCompanion, entitlement] = await Promise.all([
           listEntries<JournalEntry>("journal"),
           listEntries<ManifestationItem>("manifestation"),
+          getCompanion(),
           getMyEntitlement(),
         ]);
         if (!cancelled) {
           setEntries(rows || []);
           setManifestations(savedManifestations || []);
+          setCompanion(savedCompanion);
           setPlan(entitlement.plan);
           setSubscriptionStatus(entitlement.subscriptionStatus || null);
         }
@@ -130,12 +134,22 @@ const V5App: React.FC = () => {
     setManifestations((prev) => [{ ...item, id: newId || item.id }, ...prev]);
   };
 
+  const saveCompanionProfile = async (profile: CompanionProfile) => {
+    if (!supabase || !currentUser) {
+      throw new Error(language === "zh" ? "请先登录后完成破壳。" : "Please sign in before hatching your companion.");
+    }
+    const saved = await saveCompanion(profile);
+    setCompanion(saved);
+    return saved;
+  };
+
   const logout = async () => {
     if (!supabase) return;
     await getSupabaseClient().auth.signOut();
     setCurrentUser(null);
     setEntries([]);
     setManifestations([]);
+    setCompanion(null);
   };
 
   return (
@@ -145,6 +159,7 @@ const V5App: React.FC = () => {
         currentUser={currentUser}
         entries={entries}
         manifestations={manifestations}
+        companion={companion}
         plan={plan}
         subscriptionStatus={subscriptionStatus}
         persistenceAvailable={isSupabaseConfigured}
@@ -152,6 +167,7 @@ const V5App: React.FC = () => {
         onSaveEntry={saveEntry}
         onUpdateEntry={updateSavedEntry}
         onSaveManifestation={saveManifestation}
+        onSaveCompanion={saveCompanionProfile}
         onLogout={logout}
       />
 

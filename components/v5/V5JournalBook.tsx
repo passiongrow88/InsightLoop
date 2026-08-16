@@ -612,9 +612,12 @@ const V5JournalBook: React.FC<Props> = ({
                   </>
                 )}
                 {savedEntry?.responseStatus === "failed" && (
-                  <button onClick={() => void retryResponse()} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full border border-[#65482c]/25 px-5 py-2.5 text-sm text-[#65482c] disabled:opacity-50">
-                    <RotateCcw size={16} /> {copy.retry}
-                  </button>
+                  <>
+                    {saveError && <p role="status" className="max-w-xl rounded-xl bg-red-50/65 px-4 py-2 text-center text-xs leading-5 text-red-900">{saveError}</p>}
+                    <button onClick={() => void retryResponse()} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full border border-[#65482c]/25 px-5 py-2.5 text-sm text-[#65482c] disabled:opacity-50">
+                      <RotateCcw size={16} /> {copy.retry}
+                    </button>
+                  </>
                 )}
                 <button onClick={onClose} className="rounded-full bg-[#65482c] px-6 py-2.5 text-sm text-[#fff7e8] shadow-md">
                   {copy.close}

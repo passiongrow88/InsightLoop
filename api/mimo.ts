@@ -20,8 +20,9 @@ function chatCompletionsUrl() {
 }
 
 async function requirePreviewUser(req: VercelRequest) {
+  const appToken = String(req.headers["x-insightloop-session"] || "");
   const bearer = String(req.headers.authorization || "");
-  const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : "";
+  const token = appToken || (bearer.startsWith("Bearer ") ? bearer.slice(7) : "");
   const authClient = createClient(
     process.env.SUPABASE_URL || PREVIEW_SUPABASE_URL,
     process.env.SUPABASE_PUBLISHABLE_KEY || PREVIEW_SUPABASE_KEY,
@@ -29,15 +30,27 @@ async function requirePreviewUser(req: VercelRequest) {
   );
   const { data, error } = await authClient.auth.getUser(token);
   if (error || !data.user) throw Object.assign(new Error("A valid Preview session is required."), { status: 401 });
+  return data.user.id;
 }
 
 module.exports = async function handler(req: VercelRequest, res: VercelResponse) {
+  const requestId = String(req.headers["x-vercel-id"] || req.headers["x-request-id"] || `mimo-${Date.now()}`);
   try {
+    if (req.method === "GET") {
+      return res.status(200).json({
+        ok: true,
+        preview: process.env.VERCEL_ENV === "preview",
+        configured: Boolean(process.env.MIMO_API_KEY),
+        model: "mimo-v2.5",
+      });
+    }
     if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+    console.log("[mimo] request", { requestId, method: req.method, preview: process.env.VERCEL_ENV === "preview", configured: Boolean(process.env.MIMO_API_KEY) });
     if (process.env.VERCEL_ENV !== "preview" && process.env.ALLOW_LOCAL_PREVIEW_AI !== "true") {
       return res.status(403).json({ error: "Journal AI is enabled only in the V5 Preview." });
     }
-    await requirePreviewUser(req);
+    const userId = await requirePreviewUser(req);
+    console.log("[mimo] auth-ok", { requestId, userId });
 
     const apiKey = process.env.MIMO_API_KEY;
     if (!apiKey) return res.status(503).json({ error: "MiMo is not configured for this Preview." });
@@ -51,6 +64,7 @@ module.exports = async function handler(req: VercelRequest, res: VercelResponse)
       return res.status(413).json({ error: "Journal context is too large" });
     }
 
+    console.log("[mimo] provider-start", { requestId, model: "mimo-v2.5" });
     const upstream = await fetch(chatCompletionsUrl(), {
       method: "POST",
       headers: {
@@ -73,10 +87,11 @@ module.exports = async function handler(req: VercelRequest, res: VercelResponse)
     });
 
     if (!upstream.ok) {
+      console.error("[mimo] provider-error", { requestId, status: upstream.status, providerRequestId: upstream.headers.get("x-request-id") || undefined });
       return res.status(upstream.status >= 500 ? 502 : upstream.status).json({
         error: "MiMo could not generate the journal response.",
         providerStatus: upstream.status,
-        requestId: upstream.headers.get("x-request-id") || undefined,
+        requestId: upstream.headers.get("x-request-id") || requestId,
       });
     }
 
@@ -84,12 +99,15 @@ module.exports = async function handler(req: VercelRequest, res: VercelResponse)
       choices?: Array<{ message?: { content?: string } }>;
     };
     const text = data.choices?.[0]?.message?.content?.trim() || "";
-    if (!text) return res.status(502).json({ error: "MiMo returned an empty journal response." });
+    if (!text) return res.status(502).json({ error: "MiMo returned an empty journal response.", requestId });
+    console.log("[mimo] success", { requestId, characters: text.length });
     return res.status(200).json({ text, provider: "mimo", model: "mimo-v2.5" });
   } catch (error: any) {
     const status = Number(error?.status) || (error?.name === "TimeoutError" ? 504 : 500);
+    console.error("[mimo] failed", { requestId, status, name: error?.name, message: String(error?.message || "MiMo request failed.") });
     return res.status(status).json({
       error: status === 504 ? "MiMo timed out. Your journal entry remains saved." : String(error?.message || "MiMo request failed."),
+      requestId,
     });
   }
 }

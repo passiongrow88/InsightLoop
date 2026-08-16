@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, ChevronRight, CloudRain, Compass, CreditCard, Flame, Headphones, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
-import { JournalEntry, Language, ManifestationItem, User } from "../../types";
+import { BookOpen, ChevronRight, CloudRain, Compass, CreditCard, Flame, Headphones, Loader2, LogIn, MoonStar, Music2, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { CompanionKind, CompanionProfile, JournalEntry, Language, ManifestationItem, User } from "../../types";
 import { V5_ASSETS } from "../../src/v5/assetManifest";
 import { V5_BUILD_INFO } from "../../src/v5/buildInfo";
 import { useAmbientSound } from "../../src/v5/useAmbientSound";
 import { resolveDreamText } from "../../src/v5/journalSignals";
 import { getSupabaseClient } from "../../src/services/supabaseClient";
+import { generateCompanionRecommendation } from "../../services/mimoService";
 import V5AssetVideo from "./V5AssetVideo";
 import V5JournalBook from "./V5JournalBook";
 
@@ -14,6 +15,7 @@ interface Props {
   currentUser: User | null;
   entries: JournalEntry[];
   manifestations: ManifestationItem[];
+  companion: CompanionProfile | null;
   plan: "free" | "pro";
   subscriptionStatus: string | null;
   persistenceAvailable: boolean;
@@ -21,6 +23,7 @@ interface Props {
   onSaveEntry: (entry: JournalEntry) => Promise<void>;
   onUpdateEntry: (entry: JournalEntry) => Promise<void>;
   onSaveManifestation: (item: ManifestationItem) => Promise<void>;
+  onSaveCompanion: (profile: CompanionProfile) => Promise<CompanionProfile>;
   onLogout: () => Promise<void>;
 }
 
@@ -32,6 +35,7 @@ const V5StudyShell: React.FC<Props> = ({
   currentUser,
   entries,
   manifestations,
+  companion,
   plan,
   subscriptionStatus,
   persistenceAvailable,
@@ -39,6 +43,7 @@ const V5StudyShell: React.FC<Props> = ({
   onSaveEntry,
   onUpdateEntry,
   onSaveManifestation,
+  onSaveCompanion,
   onLogout,
 }) => {
   const [journalOpen, setJournalOpen] = useState(() => {
@@ -65,6 +70,9 @@ const V5StudyShell: React.FC<Props> = ({
   const [wheelReason, setWheelReason] = useState("");
   const [wheelSaving, setWheelSaving] = useState(false);
   const [wheelMessage, setWheelMessage] = useState("");
+  const [eggBusy, setEggBusy] = useState(false);
+  const [eggMessage, setEggMessage] = useState("");
+  const [companionName, setCompanionName] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambience = useAmbientSound();
 
@@ -73,12 +81,17 @@ const V5StudyShell: React.FC<Props> = ({
   }, [musicUrl]);
 
   const zh = language === "zh";
+  const companionKindLabel = (kind?: CompanionKind) => kind === "phoenix"
+    ? (zh ? "小凤凰" : "Little Phoenix")
+    : (zh ? "小雷龙" : "Little Thunder Dragon");
+  const companionKindEmoji = (kind?: CompanionKind) => kind === "phoenix" ? "🐦‍🔥" : "🐉";
   const uniqueRecordDays = useMemo(
     () => new Set(entries.map((entry) => entry.date).filter(Boolean)).size,
     [entries],
   );
   const founderQa = subscriptionStatus === "founder_qa";
   const hatchProgress = founderQa ? 7 : Math.min(7, uniqueRecordDays);
+  const hatchEligible = Boolean(currentUser && entries.length > 0 && (founderQa || plan === "pro" || hatchProgress >= 7));
   const dreams = useMemo(
     () => entries
       .map((entry) => ({ ...entry, dreams: resolveDreamText(entry.event, entry.dreams) }))
@@ -161,6 +174,79 @@ const V5StudyShell: React.FC<Props> = ({
       setBillingMessage(error?.message || (zh ? "Preview 结账暂时不可用。" : "Preview checkout is unavailable."));
     } finally {
       setBillingLoading(false);
+    }
+  };
+
+  const beginHatching = async () => {
+    if (!currentUser) {
+      onRequestAuth();
+      return;
+    }
+    if (!hatchEligible) {
+      setEggMessage(zh ? "先完成至少一篇真实保存的日记，蛋才会回应。" : "Save at least one real journal entry before the egg responds.");
+      return;
+    }
+    setEggBusy(true);
+    setEggMessage("");
+    try {
+      const recommendation = await generateCompanionRecommendation(entries, language);
+      const now = Date.now();
+      await onSaveCompanion({
+        recommendedKind: recommendation.recommendedKind,
+        recommendationReason: recommendation.reason,
+        status: "recommended",
+        createdAt: companion?.createdAt || now,
+        updatedAt: now,
+      });
+    } catch (error: any) {
+      setEggMessage(error?.message || (zh ? "InsightLoop 暂时无法完成推荐，请重试。" : "InsightLoop could not complete the recommendation. Please retry."));
+    } finally {
+      setEggBusy(false);
+    }
+  };
+
+  const chooseCompanion = async (kind: CompanionKind) => {
+    if (!companion || eggBusy) return;
+    setEggBusy(true);
+    setEggMessage("");
+    try {
+      await onSaveCompanion({
+        ...companion,
+        selectedKind: kind,
+        status: "selected",
+        updatedAt: Date.now(),
+      });
+      setCompanionName("");
+    } catch (error: any) {
+      setEggMessage(error?.message || (zh ? "选择暂时无法保存，请重试。" : "Your choice could not be saved. Please retry."));
+    } finally {
+      setEggBusy(false);
+    }
+  };
+
+  const finishHatching = async () => {
+    if (!companion?.selectedKind || eggBusy) return;
+    const name = companionName.trim();
+    if (!name) {
+      setEggMessage(zh ? "先为陪伴兽写下名字。" : "Name your companion first.");
+      return;
+    }
+    setEggBusy(true);
+    setEggMessage("");
+    try {
+      const now = Date.now();
+      await onSaveCompanion({
+        ...companion,
+        name,
+        status: "hatched",
+        updatedAt: now,
+        hatchedAt: now,
+      });
+      setEffect("egg");
+    } catch (error: any) {
+      setEggMessage(error?.message || (zh ? "破壳状态暂时无法保存，请重试。" : "The hatching state could not be saved. Please retry."));
+    } finally {
+      setEggBusy(false);
     }
   };
 
@@ -266,14 +352,14 @@ const V5StudyShell: React.FC<Props> = ({
       <StudyHotspot className="left-[51%] top-[10%] h-[37%] w-[10%]" label={zh ? "捕梦网" : "Dreamcatcher"} onClick={() => openEffect("dream", "dreams")} icon={<MoonStar size={17} />} desktop />
       <StudyHotspot className="left-[62%] top-[7%] h-[30%] w-[15%]" label={zh ? "船舵" : "Ship wheel"} onClick={() => setOverlay("wheel")} icon={<Compass size={17} />} desktop />
       <StudyHotspot className="left-[63%] top-[36%] h-[26%] w-[17%]" label={zh ? "老式播放器" : "Record player"} onClick={() => openEffect("player", "player")} icon={<Music2 size={17} />} desktop />
-      <StudyHotspot className="left-[8%] top-[55%] h-[27%] w-[17%]" label={zh ? `陪伴兽蛋 ${hatchProgress}/7` : `Companion egg ${hatchProgress}/7`} onClick={() => openEffect("egg", "egg")} icon={<Sparkles size={17} />} desktop />
+      <StudyHotspot className="left-[8%] top-[55%] h-[27%] w-[17%]" label={zh ? (companion?.status === "hatched" ? `${companion.name || "陪伴兽"} · 已破壳` : `陪伴兽蛋 ${hatchProgress}/7`) : (companion?.status === "hatched" ? `${companion.name || "Companion"} · Hatched` : `Companion egg ${hatchProgress}/7`)} onClick={() => setOverlay("egg")} icon={<Sparkles size={17} />} desktop />
 
       {/* Mobile uses a compact object key because the camera crop changes materially. */}
       <nav className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-[#271a12]/52 p-1.5 shadow-xl backdrop-blur-md md:hidden">
         <MobileObjectButton label={zh ? "日记" : "Journal"} icon={<BookOpen size={18} />} onClick={() => setJournalOpen(true)} />
         <MobileObjectButton label={zh ? "梦" : "Dreams"} icon={<MoonStar size={18} />} onClick={() => openEffect("dream", "dreams")} />
         <MobileObjectButton label={zh ? "方向" : "Direction"} icon={<Compass size={18} />} onClick={() => setOverlay("wheel")} />
-        <MobileObjectButton label={zh ? "蛋" : "Egg"} icon={<Sparkles size={18} />} onClick={() => openEffect("egg", "egg")} />
+        <MobileObjectButton label={zh ? (companion?.status === "hatched" ? "陪伴兽" : "蛋") : (companion?.status === "hatched" ? "Companion" : "Egg")} icon={<Sparkles size={18} />} onClick={() => setOverlay("egg")} />
         <MobileObjectButton label={zh ? "音乐" : "Music"} icon={<Headphones size={18} />} onClick={() => openEffect("player", "player")} />
       </nav>
 
@@ -347,17 +433,71 @@ const V5StudyShell: React.FC<Props> = ({
 
       {overlay === "egg" && !effect && (
         <StudyPanel title={zh ? "陪伴兽的蛋" : "Companion egg"} onClose={() => setOverlay(null)}>
-          <div className="text-center">
-            <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-3xl shadow-[0_0_45px_rgba(251,191,36,.12)]">🥚</div>
-            <p className="font-serif text-xl text-[#fff3de]">{zh ? `${hatchProgress} / 7 个记录日` : `${hatchProgress} / 7 record days`}</p>
-            {founderQa && <p className="mt-2 text-xs tracking-[0.14em] text-amber-100/70">{zh ? "FOUNDER QA · 已跳过等待期" : "FOUNDER QA · WAIT SKIPPED"}</p>}
-            <div className="mx-auto mt-4 h-2 max-w-xs overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-200/70 transition-all" style={{ width: `${(hatchProgress / 7) * 100}%` }} /></div>
-            <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-[#d7c4aa]">
-              {hatchProgress >= 7
-                ? (zh ? "你已经留下了足够的不同日子。正式孵化时，InsightLoop 会根据记录给出推荐，但最后由你选择小凤凰或小雷龙。" : "You have enough record days. InsightLoop may recommend a beast, but you choose Phoenix or Thunder Dragon.")
-                : (zh ? "同一天可以写很多篇，但每天最多只有一篇计入孵化。它正在安静地记住你回来过的日子。" : "Write as much as you like. Only one entry per day advances hatching.")}
-            </p>
-          </div>
+          {companion?.status === "hatched" ? (
+            <div className="text-center">
+              <div className="mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-full border border-amber-200/25 bg-amber-300/10 text-5xl shadow-[0_0_55px_rgba(251,191,36,.18)]">{companionKindEmoji(companion.selectedKind)}</div>
+              <p className="font-serif text-3xl text-[#fff3de]">{companion.name}</p>
+              <p className="mt-2 text-xs tracking-[0.16em] text-amber-100/65">{companionKindLabel(companion.selectedKind)}</p>
+              <p className="mx-auto mt-5 max-w-md text-sm leading-7 text-[#d7c4aa]">
+                {zh
+                  ? `${companion.name} 已经破壳，会作为你的日记管理员陪在书房里。完整档案检索与深度回顾仍在后续阶段，不会假装已经实现。`
+                  : `${companion.name} has hatched and will stay in the study as your journal keeper. Full archive search and deep review are still a later phase and are not being presented as complete.`}
+              </p>
+            </div>
+          ) : companion?.status === "selected" && companion.selectedKind ? (
+            <div className="mx-auto max-w-md text-center">
+              <div className="mx-auto mb-4 text-5xl">{companionKindEmoji(companion.selectedKind)}</div>
+              <p className="font-serif text-2xl text-[#fff3de]">{companionKindLabel(companion.selectedKind)}</p>
+              <p className="mt-3 text-sm leading-6 text-[#d7c4aa]">{zh ? "最后一步：写下你想叫它的名字。名字保存后才会真正开始破壳。" : "One final step: choose its name. Hatching begins only after the name is saved."}</p>
+              <input
+                value={companionName}
+                onChange={(event) => setCompanionName(event.target.value)}
+                placeholder={zh ? "陪伴兽的名字" : "Companion name"}
+                maxLength={40}
+                className="mt-5 w-full rounded-xl border border-white/12 bg-white/7 px-4 py-3 text-center font-serif text-lg text-[#fff3de] outline-none placeholder:text-[#8f806d] focus:border-amber-100/35"
+              />
+              <button onClick={() => void finishHatching()} disabled={eggBusy || !companionName.trim()} className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#8a623d] px-6 py-3 text-sm text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-45">
+                {eggBusy && <Loader2 size={16} className="animate-spin" />}
+                {zh ? "保存名字，开始破壳" : "Save name and hatch"}
+              </button>
+            </div>
+          ) : companion?.status === "recommended" ? (
+            <div className="mx-auto max-w-xl text-center">
+              <p className="text-xs tracking-[0.16em] text-amber-100/60">{zh ? "INSIGHTLOOP 的推荐" : "INSIGHTLOOP RECOMMENDATION"}</p>
+              <div className="mx-auto mt-4 text-5xl">{companionKindEmoji(companion.recommendedKind)}</div>
+              <p className="mt-3 font-serif text-2xl text-[#fff3de]">{companionKindLabel(companion.recommendedKind)}</p>
+              <p className="mx-auto mt-4 max-w-lg rounded-2xl border border-white/8 bg-black/15 p-4 text-sm leading-7 text-[#d7c4aa]">{companion.recommendationReason}</p>
+              <p className="mt-5 text-sm text-[#baa68d]">{zh ? "推荐只是线索，最后由你选择。" : "The recommendation is only a clue. The final choice is yours."}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {(["phoenix", "thunder_dragon"] as CompanionKind[]).map((kind) => (
+                  <button key={kind} onClick={() => void chooseCompanion(kind)} disabled={eggBusy} className="rounded-2xl border border-amber-100/15 bg-white/5 p-4 text-left transition hover:border-amber-100/35 hover:bg-white/8 disabled:opacity-45">
+                    <span className="text-3xl">{companionKindEmoji(kind)}</span>
+                    <span className="mt-2 block font-serif text-lg text-[#fff3de]">{companionKindLabel(kind)}</span>
+                    {kind === companion.recommendedKind && <span className="mt-2 inline-block rounded-full bg-amber-200/10 px-2.5 py-1 text-[10px] tracking-wide text-amber-100/75">{zh ? "推荐" : "RECOMMENDED"}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-3xl shadow-[0_0_45px_rgba(251,191,36,.12)]">🥚</div>
+              <p className="font-serif text-xl text-[#fff3de]">{zh ? `${hatchProgress} / 7 个记录日` : `${hatchProgress} / 7 record days`}</p>
+              {founderQa && <p className="mt-2 text-xs tracking-[0.14em] text-amber-100/70">{zh ? "FOUNDER QA · 已跳过等待期" : "FOUNDER QA · WAIT SKIPPED"}</p>}
+              <div className="mx-auto mt-4 h-2 max-w-xs overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-200/70 transition-all" style={{ width: `${(hatchProgress / 7) * 100}%` }} /></div>
+              <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-[#d7c4aa]">
+                {hatchEligible
+                  ? (zh ? "等待期已经完成。InsightLoop 会先阅读你真实保存的记录并给出一个可推翻的推荐，然后由你选择、命名并完成破壳。" : "The wait is complete. InsightLoop will first read your saved records and offer a recommendation you may override; then you choose, name, and hatch your companion.")
+                  : currentUser
+                    ? (zh ? "Pro 或 Founder QA 仍需要至少一篇真实保存的日记，才能开始推荐和破壳。" : "Pro and Founder QA still require at least one real saved journal before recommendation and hatching begin.")
+                    : (zh ? "登录自己的书房后，才能读取真实记录并开始破壳。" : "Sign in to your study before reading saved records and starting the ritual.")}
+              </p>
+              <button onClick={() => void beginHatching()} disabled={eggBusy || (Boolean(currentUser) && !hatchEligible)} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#8a623d] px-6 py-3 text-sm text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-45">
+                {eggBusy && <Loader2 size={16} className="animate-spin" />}
+                {!currentUser ? (zh ? "登录后开始" : "Sign in to begin") : (zh ? "请 InsightLoop 给出推荐" : "Ask InsightLoop for a recommendation")}
+              </button>
+            </div>
+          )}
+          {eggMessage && <p role="status" className="mx-auto mt-5 max-w-xl rounded-xl bg-red-950/25 p-3 text-center text-xs leading-5 text-red-100/90">{eggMessage}</p>}
         </StudyPanel>
       )}
 

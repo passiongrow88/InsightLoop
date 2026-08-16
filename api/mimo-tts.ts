@@ -20,8 +20,9 @@ function chatCompletionsUrl() {
 }
 
 async function requirePreviewUser(req: VercelRequest) {
+  const appToken = String(req.headers["x-insightloop-session"] || "");
   const bearer = String(req.headers.authorization || "");
-  const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : "";
+  const token = appToken || (bearer.startsWith("Bearer ") ? bearer.slice(7) : "");
   const authClient = createClient(
     process.env.SUPABASE_URL || PREVIEW_SUPABASE_URL,
     process.env.SUPABASE_PUBLISHABLE_KEY || PREVIEW_SUPABASE_KEY,
