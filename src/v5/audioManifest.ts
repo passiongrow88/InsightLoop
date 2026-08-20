@@ -3,9 +3,11 @@ export interface V5AudioSources {
   aac: string;
 }
 
+const assetBase = ((import.meta.env.VITE_V5_ASSET_BASE as string) || "/v5").replace(/\/$/, "");
+
 const sources = (name: string): V5AudioSources => ({
-  opus: `/v5/audio/${name}.ogg`,
-  aac: `/v5/audio/${name}.m4a`,
+  opus: `${assetBase}/audio/${name}.ogg`,
+  aac: `${assetBase}/audio/${name}.m4a`,
 });
 
 export const V5_AUDIO = {

@@ -12,47 +12,52 @@ export interface V5VideoAsset {
   poster?: string;
 }
 
-const poster = (id: string) => `/v5/posters/${id}.webp`;
+// Keep the checked-in /public/v5 bundle as the default. Preview deployments
+// that cannot upload the large media bundle can point at an immutable CDN
+// copy with VITE_V5_ASSET_BASE, without changing production behavior.
+const assetBase = ((import.meta.env.VITE_V5_ASSET_BASE as string) || "/v5").replace(/\/$/, "");
+const asset = (path: string) => `${assetBase}/${path}`;
+const poster = (id: string) => asset(`posters/${id}.webp`);
 
 export const V5_ASSETS = {
   studyDesktop: {
-    local: "/v5/animations/S01_no-watermark.mp4",
+    local: asset("animations/S01_no-watermark.mp4"),
     poster: poster("S01"),
   },
   studyMobile: {
-    local: "/v5/animations/S02_no-watermark.mp4",
+    local: asset("animations/S02_no-watermark.mp4"),
     poster: poster("S02"),
   },
   journalFly: {
-    local: "/v5/animations/S03_no-watermark.mp4",
+    local: asset("animations/S03_no-watermark.mp4"),
     poster: poster("S03"),
   },
   journalOpen: {
-    local: "/v5/animations/S04_no-watermark.mp4",
+    local: asset("animations/S04_no-watermark.mp4"),
     poster: poster("S04"),
   },
   journalTurn: {
-    local: "/v5/animations/S05_no-watermark.mp4",
+    local: asset("animations/S05_no-watermark.mp4"),
     poster: poster("S05"),
   },
   quillThink: {
-    local: "/v5/animations/S06_no-watermark.mp4",
+    local: asset("animations/S06_no-watermark.mp4"),
     poster: poster("S06"),
   },
   eggDay7: {
-    local: "/v5/animations/S07_no-watermark.mp4",
+    local: asset("animations/S07_no-watermark.mp4"),
     poster: poster("S07"),
   },
   shipWheelConfirm: {
-    local: "/v5/animations/S08_no-watermark.mp4",
+    local: asset("animations/S08_no-watermark.mp4"),
     poster: poster("S08"),
   },
   dreamcatcherReceive: {
-    local: "/v5/animations/S09_no-watermark.mp4",
+    local: asset("animations/S09_no-watermark.mp4"),
     poster: poster("S09"),
   },
   recordPlayerStart: {
-    local: "/v5/animations/S10_no-watermark.mp4",
+    local: asset("animations/S10_no-watermark.mp4"),
     poster: poster("S10"),
   },
 } satisfies Record<string, V5VideoAsset>;
