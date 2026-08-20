@@ -3,7 +3,8 @@ const { createClient } = require("@supabase/supabase-js");
 
 const PREVIEW_SUPABASE_URL = "https://psgjismukjxpsnodtwvl.supabase.co";
 const PREVIEW_SUPABASE_KEY = "sb_publishable_V51jM3gFdCgsJA_Kw9W2zg_522aw52U";
-const DEFAULT_MIMO_BASE_URL = "https://token-plan-sgp.xiaomimimo.com/v1";
+const PAYG_MIMO_BASE_URL = "https://api.xiaomimimo.com/v1";
+const TOKEN_PLAN_MIMO_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
 const ALLOWED_MIMO_HOSTS = new Set([
   "api.xiaomimimo.com",
   "token-plan-cn.xiaomimimo.com",
@@ -11,8 +12,9 @@ const ALLOWED_MIMO_HOSTS = new Set([
   "token-plan-ams.xiaomimimo.com",
 ]);
 
-function chatCompletionsUrl() {
-  const base = new URL(process.env.MIMO_BASE_URL || DEFAULT_MIMO_BASE_URL);
+function chatCompletionsUrl(apiKey: string) {
+  const inferredBase = apiKey.startsWith("sk-") ? PAYG_MIMO_BASE_URL : TOKEN_PLAN_MIMO_BASE_URL;
+  const base = new URL(process.env.MIMO_BASE_URL || inferredBase);
   if (base.protocol !== "https:" || !ALLOWED_MIMO_HOSTS.has(base.hostname)) {
     throw new Error("MIMO_BASE_URL is not an approved Xiaomi MiMo endpoint.");
   }
@@ -51,11 +53,11 @@ module.exports = async function handler(req: VercelRequest, res: VercelResponse)
       ? "Warm, calm, intimate journal reading. Unhurried pace, soft natural tone, emotionally present without sounding theatrical or clinical."
       : "温暖、平静、亲近地朗读日记。语速舒缓，声音自然柔和，有情感但不表演化，也不像临床播报。";
 
-    const upstream = await fetch(chatCompletionsUrl(), {
+    const upstream = await fetch(chatCompletionsUrl(apiKey), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        "api-key": apiKey,
       },
       body: JSON.stringify({
         model: "mimo-v2.5-tts",

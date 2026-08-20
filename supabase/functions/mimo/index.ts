@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.89.0";
 
-const DEFAULT_MIMO_BASE_URL = "https://token-plan-sgp.xiaomimimo.com/v1";
+const PAYG_MIMO_BASE_URL = "https://api.xiaomimimo.com/v1";
+const TOKEN_PLAN_MIMO_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
 const ALLOWED_MIMO_HOSTS = new Set([
   "api.xiaomimimo.com",
   "token-plan-cn.xiaomimimo.com",
@@ -23,8 +24,9 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function chatCompletionsUrl() {
-  const base = new URL(Deno.env.get("MIMO_BASE_URL") || DEFAULT_MIMO_BASE_URL);
+function chatCompletionsUrl(apiKey: string) {
+  const inferredBase = apiKey.startsWith("sk-") ? PAYG_MIMO_BASE_URL : TOKEN_PLAN_MIMO_BASE_URL;
+  const base = new URL(Deno.env.get("MIMO_BASE_URL") || inferredBase);
   if (base.protocol !== "https:" || !ALLOWED_MIMO_HOSTS.has(base.hostname)) {
     throw new Error("MIMO_BASE_URL is not an approved Xiaomi MiMo endpoint.");
   }
@@ -91,9 +93,9 @@ Deno.serve(async (req: Request) => {
         ? "Warm, calm, intimate journal reading. Unhurried pace, soft natural tone, emotionally present without sounding theatrical or clinical."
         : "温暖、平静、亲近地朗读日记。语速舒缓，声音自然柔和，有情感但不表演化，也不像临床播报。";
 
-      const upstream = await fetch(chatCompletionsUrl(), {
+      const upstream = await fetch(chatCompletionsUrl(apiKey), {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        headers: { "Content-Type": "application/json", "api-key": apiKey },
         body: JSON.stringify({
           model: "mimo-v2.5-tts",
           messages: [
@@ -127,9 +129,9 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Journal context is too large" }, 413);
     }
 
-    const upstream = await fetch(chatCompletionsUrl(), {
+    const upstream = await fetch(chatCompletionsUrl(apiKey), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: { "Content-Type": "application/json", "api-key": apiKey },
       body: JSON.stringify({
         model: "mimo-v2.5",
         messages: [
