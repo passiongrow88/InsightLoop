@@ -1,5 +1,9 @@
 import { CompanionKind, JournalEntry, Language } from "../types";
-import { getSupabaseClient } from "../src/services/supabaseClient";
+import {
+  getSupabaseClient,
+  supabaseFunctionsUrl,
+  supabasePublishableKey,
+} from "../src/services/supabaseClient";
 
 const V5_JOURNAL_INSTRUCTION = `
 You write the right-hand page of the InsightLoop journal.
@@ -34,17 +38,14 @@ async function readApiError(response: Response) {
 }
 
 async function requestMiMo(prompt: string, systemInstruction: string) {
-  const response = await fetch("/api/mimo", {
+  const response = await fetch(`${supabaseFunctionsUrl}/mimo`, {
     method: "POST",
-    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      // Vercel Deployment Protection also owns the standard Authorization
-      // header. A dedicated app header lets the request reach our function,
-      // where the Supabase session is still fully verified server-side.
-      "X-InsightLoop-Session": await previewToken(),
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${await previewToken()}`,
     },
-    body: JSON.stringify({ prompt, systemInstruction }),
+    body: JSON.stringify({ action: "chat", prompt, systemInstruction }),
   });
   if (!response.ok) throw new Error(await readApiError(response));
   const data = await response.json() as { text?: string };
@@ -134,12 +135,18 @@ ${JSON.stringify(records)}
 };
 
 export const generateJournalSpeech = async (text: string, language: Language) => {
-  const response = await fetch("/api/mimo-tts", {
+  const response = await fetch(`${supabaseFunctionsUrl}/mimo`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-InsightLoop-Session": await previewToken() },
-    body: JSON.stringify({ text, language }),
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${await previewToken()}`,
+    },
+    body: JSON.stringify({ action: "tts", text, language }),
   });
   if (!response.ok) throw new Error(await readApiError(response));
-  return response.blob();
+  const data = await response.json() as { audioBase64?: string; contentType?: string };
+  if (!data.audioBase64) throw new Error("MiMo returned no playable journal audio.");
+  const bytes = Uint8Array.from(atob(data.audioBase64), (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: data.contentType || "audio/wav" });
 };

@@ -6,6 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || "https://psgjismukjxpsnodtwvl.supabase.co";
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "sb_publishable_V51jM3gFdCgsJA_Kw9W2zg_522aw52U";
 
+export const supabaseFunctionsUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1`;
+export const supabasePublishableKey = supabaseAnonKey;
+
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!isSupabaseConfigured) {
