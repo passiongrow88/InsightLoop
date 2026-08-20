@@ -1,2 +1,6 @@
-export { supabase } from "../src/services/supabaseClient";
-
+export {
+  getSupabaseClient,
+  isSupabaseConfigured,
+  missingSupabaseConfigurationMessage,
+  supabase,
+} from "../src/services/supabaseClient";

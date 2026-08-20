@@ -12,6 +12,7 @@ export type ViewType =
   | "admin";        // âœ… æ–°å¢žï¼šç®¡ç†å‘˜åŽå°
 
 export interface User {
+  id?: string;
   email: string;
   name?: string;
   reminderTime?: string;
@@ -20,6 +21,7 @@ export interface User {
 export interface JournalEntry {
   createdAt: number;
   aiResponse?: string;
+  responseStatus?: "pending" | "ready" | "failed";
   additionalNotes?: string;
   id: string;
   date: string;
@@ -53,6 +55,21 @@ export interface ManifestationItem {
   user_id?: string;
 }
 
+export type CompanionKind = "phoenix" | "thunder_dragon";
+export type CompanionStatus = "recommended" | "selected" | "hatched";
+
+export interface CompanionProfile {
+  userId?: string;
+  recommendedKind: CompanionKind;
+  recommendationReason: string;
+  selectedKind?: CompanionKind;
+  name?: string;
+  status: CompanionStatus;
+  createdAt: number;
+  updatedAt: number;
+  hatchedAt?: number;
+}
+
 // âœ… æ–°å¢žï¼šä¼šå‘˜ç©ºé—´èµ„æºç±»åž‹
 export interface Resource {
   id: string;
@@ -72,5 +89,3 @@ export interface Resource {
   is_active: boolean;
   created_at: string;
 }
-
-

@@ -1,0 +1,60 @@
+{
+  "receivedAt": "2026-08-11",
+  "source": "Founder-provided WAV uploads",
+  "scope": "InsightLoop V5 Preview",
+  "productionRightsStatus": "Evidence pending before production/public commercial release",
+  "processing": {
+    "sampleRate": 48000,
+    "continuousTargetLufs": -20,
+    "writingTargetLufs": -21,
+    "truePeakLimitDbtp": -3,
+    "formats": ["OGG Opus", "AAC/M4A fallback"]
+  },
+  "assets": [
+    {
+      "id": "rain",
+      "sourceFile": "rain.WAV",
+      "durationSeconds": 107.17,
+      "loopCrossfadeSeconds": 3,
+      "opusSha256": "87c37e00bb3056a0859693e9465359643e6feccd82602f711503ff14bfd13a8e",
+      "aacSha256": "ae71f172cc96edc4d5009831d089c044f4f2ed916aa3103b15e8ab7c8479c60f"
+    },
+    {
+      "id": "fireplace",
+      "sourceFile": "fireplace.WAV",
+      "durationSeconds": 85.09,
+      "loopCrossfadeSeconds": 2.5,
+      "opusSha256": "338c38ddfa8c6970ac23bad4d11d9798169db17e1e1023d6eb9a4e7e59641b69",
+      "aacSha256": "6626b287c7a34e4d42a04a2952ca1c5315cf1d193b64094b7f9ef19a1f0df306"
+    },
+    {
+      "id": "quill-writing-01",
+      "sourceFile": "quill-writing-01.WAV",
+      "durationSeconds": 40.96,
+      "opusSha256": "dc2c94c378fcce5a1217fdcda5d640236b6c328fdf93263d1f877c2f6f791ee8",
+      "aacSha256": "34ba6b1912c284c04cc1b5ad18ce561aeb11482607c7f7f3633ece989e0943f7"
+    },
+    {
+      "id": "quill-writing-02",
+      "sourceFile": "quill-writing-02.WAV",
+      "durationSeconds": 7.53,
+      "opusSha256": "42851538855b49cf11a9d95b65d00fa4d5daeed31c2eb93fffa591f8a4656666",
+      "aacSha256": "bfdeaeb90e6feefe2809ce251a85c30e5d4963033dc21cc27263b12a1006078b"
+    },
+    {
+      "id": "quill-writing-03",
+      "sourceFile": "quill-writing-03.WAV",
+      "durationSeconds": 7.71,
+      "opusSha256": "7597c3202be58036b3e92f253f61076e45371a62113ce1db2cf1f0baca65702c",
+      "aacSha256": "3bafacbafc675fae6bd834ee9f69180f5458a22bbfce3d0180fcd01dbee58783"
+    },
+    {
+      "id": "book-on-table",
+      "sourceFile": "put book on table.WAV",
+      "durationSeconds": 0.3,
+      "gainReductionDb": 9,
+      "opusSha256": "f07635f341e42cc6fa581524fa881db9e994aa8fec234e63da33e0a7c0e19833",
+      "aacSha256": "c351b1a56a559773eafdc4891e9d810011e8eba1521cf6f8ca3a729487d7547a"
+    }
+  ]
+}

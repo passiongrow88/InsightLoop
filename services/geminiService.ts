@@ -1,5 +1,6 @@
 import { SYSTEM_INSTRUCTION } from "../constants";
 import { JournalEntry, ManifestationItem, Language } from "../types";
+import { getSupabaseClient } from "../src/services/supabaseClient";
 
 /**
  * ✅ Vercel Serverless API endpoint
@@ -17,6 +18,18 @@ const API_ENDPOINT = "/api/gemini";
  */
 const MODEL_NAME = "gemini-3-pro-preview";
 
+const V5_JOURNAL_INSTRUCTION = `
+You write the right-hand page of the InsightLoop journal.
+
+Respond in the main language of the current entry. Start from one concrete detail the user actually wrote. Be warm, precise, and calm, without introducing yourself or using a ritual greeting.
+
+The response must adapt to the entry. Use zero to three short paragraphs and, only when it genuinely helps, end with one open question. Do not force headings, numbered sections, generic affirmations, diagnoses, predictions, fate claims, or spiritual certainty.
+
+Historical evidence rule: mention a recurring pattern only when the supplied records show the same concrete theme on at least two separate prior dates as well as today. If that threshold is not met, do not imply that a pattern exists. Dreams, numbers, and symbols may be explored as personal metaphors only when the user included them; never present an interpretation as fact.
+
+Preserve the user's agency. Suggest at most one small next step, phrased as an invitation. Never claim memory beyond the records supplied in this request.
+`.trim();
+
 /**
  * ================================
  * Low-level Gemini API Caller
@@ -31,9 +44,12 @@ async function callGeminiAPI(payload: {
   systemInstruction?: string;
   temperature?: number;
 }): Promise<string> {
+  const { data: sessionData } = await getSupabaseClient().auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Sign in before requesting an InsightLoop response.");
   const res = await fetch(API_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
 
@@ -74,7 +90,6 @@ export const generateJournalInsight = async (
   language: Language,
   userName?: string  // ✅ 新增：用户名字参数
 ): Promise<string> => {
-  try {
     const historyContext = history
       .map(
         (h) => `
@@ -91,14 +106,9 @@ Dreams/Signs: ${h.angelNumbers || ""} ${h.dreams || ""}
     const uiContext =
       language === "zh" ? "UI Language: Chinese" : "UI Language: English";
 
-    // ✅ 新增：用户名字，如果没有则使用温暖的默认称呼
-    const displayName = userName?.trim() || (language === "zh" ? "朋友" : "Friend");
-
     const prompt = `
-USER_NAME: ${displayName}
-
-CONTEXT (User History):
-${historyContext || "No prior records."}
+LANGUAGE PREFERENCE: ${uiContext}
+USER DISPLAY NAME (use only if naturally necessary, never as a forced greeting): ${userName?.trim() || "Not provided"}
 
 CURRENT ENTRY (Today):
 Date: ${currentEntry.date}
@@ -111,31 +121,21 @@ Dreams: ${currentEntry.dreams || "None"}
 Love: ${currentEntry.loveTarget || "None"}
 Apology: ${currentEntry.apologyTarget || "None"}
 
-INSTRUCTIONS:
-1. Begin by greeting the user by their name (USER_NAME) and naturally introduce yourself as InsightLoop.
-2. Analyze the language used in "CURRENT ENTRY". Respond in that MAIN language. (${uiContext} is for reference only).
-3. Use the "Gratitude" field to generate the "Energy Anchor" output.
-4. Analyze the "CONTEXT (User History)" against the "CURRENT ENTRY". Look for recurring emotional patterns, event structures, or self-talk themes.
-5. Use these findings to populate the "Patterns & Synchronicity" section.
-6. Follow the 7-section structure defined in the system instruction, using ◈ markers and dynamic titles.
-7. Ensure the TONE is warm, specific, and companionable - like a handwritten letter, not a report.
+PRIOR DATED RECORDS:
+${historyContext || "No prior records were supplied."}
+
+Write only the journal response. Follow the evidence threshold in the system instruction.
 `;
 
     const text = await callGeminiAPI({
       model: MODEL_NAME,
       prompt,
-      systemInstruction: SYSTEM_INSTRUCTION,
-      temperature: 0.7,
+      systemInstruction: V5_JOURNAL_INSTRUCTION,
+      temperature: 0.55,
     });
 
-    return (
-      text ||
-      "I apologize, I could not generate an insight at this moment. Please try again."
-    );
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "InsightLoop is currently unavailable. Please check server/API settings and try again.";
-  }
+    if (!text.trim()) throw new Error("InsightLoop returned an empty response.");
+    return text.trim();
 };
 
 /**
